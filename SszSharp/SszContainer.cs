@@ -2,9 +2,9 @@ namespace SszSharp;
 
 public class SszContainer<TReturn> : ISszType<TReturn>
 {
-    public readonly SszContainerSchema<TReturn> Schema;
+    public readonly ISszContainerSchema<TReturn> Schema;
 
-    public SszContainer(SszContainerSchema<TReturn> schema)
+    public SszContainer(ISszContainerSchema<TReturn> schema)
     {
         Schema = schema;
     }
@@ -12,7 +12,7 @@ public class SszContainer<TReturn> : ISszType<TReturn>
     public (object, int) DeserializeUntyped(ReadOnlySpan<byte> span) => Deserialize(span);
     public (TReturn, int) Deserialize(ReadOnlySpan<byte> span)
     {
-        var ret = Schema.Factory();
+        var ret = Schema.Default();
         int lastOffset = -1;
         int nextExpectedOffset = -1;
         int fixedPartIndex = 0;

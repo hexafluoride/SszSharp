@@ -79,19 +79,23 @@ public static class SszSchemaGenerator
             if (value is not IEnumerable valueEnumerable)
                 throw new Exception("value not enumerable");
             var enumerableCast = valueEnumerable.Cast<object>();
-            var elementType = (ISszType) typeType
-                .GetField("MemberType")
-                .GetValue(sourceType);
+            var elementType = ((ISszType?) typeType
+                .GetField("MemberType")?
+                .GetValue(sourceType)) ?? throw new Exception();
             var targetElementType = default(Type);
 
             if (targetType.IsArray)
             {
-                targetElementType = targetType.GetElementType();
+                targetElementType = targetType.GetElementType() ?? throw new Exception("Could not derive element type of array");
             }
-            else if (targetTypeInterfaces.Any(iface => iface.FullName.StartsWith("System.Collections.Generic.IList")))
+            else if (targetTypeInterfaces.Any(iface => iface.FullName?.StartsWith("System.Collections.Generic.IList") ?? false))
             {
                 targetElementType = targetTypeInterfaces
-                    .First(iface => iface.FullName.StartsWith("System.Collections.Generic.IList")).GenericTypeArguments[0];
+                    .First(iface => iface.FullName?.StartsWith("System.Collections.Generic.IList") ?? false).GenericTypeArguments[0];
+            }
+            else
+            {
+                throw new Exception("Could not derive element type");
             }
             
             var unwrappedEnumerable = enumerableCast.Select(element => Unwrap(elementType, targetElementType, element));
@@ -118,17 +122,17 @@ public static class SszSchemaGenerator
     
     public static SszContainerSchema<T> GetSchema<T>(Func<T> factory)
     {
-        (var fieldTypes, var getters, var setters) = GetSchemaElements<T>();
-        return new SszContainerSchema<T>(fieldTypes, getters, setters, factory);
+        (var fieldTypes, var getters, var setters, var names) = GetSchemaElements<T>();
+        return new SszContainerSchema<T>(fieldTypes, getters, setters, names, factory);
     }
     
     public static SszContainerSchema<T> GetSchemaWithUntypedFactory<T>(Func<object> factory)
     {
-        (var fieldTypes, var getters, var setters) = GetSchemaElements<T>();
-        return new SszContainerSchema<T>(fieldTypes, getters, setters, factory);
+        (var fieldTypes, var getters, var setters, var names) = GetSchemaElements<T>();
+        return new SszContainerSchema<T>(fieldTypes, getters, setters, names, factory);
     }
     
-    static (ISszType[], Func<T, object>[], Action<T, object>[]) GetSchemaElements<T>()
+    static (ISszType[], Func<T, object>[], Action<T, object>[], string[]) GetSchemaElements<T>()
     {
         var containerType = typeof(T);
         var typeProperties = containerType.GetProperties();
@@ -138,6 +142,7 @@ public static class SszSchemaGenerator
         var fieldTypes = new ISszType[sszFieldCount];
         var getters = new Func<T, object>[sszFieldCount];
         var setters = new Action<T, object>[sszFieldCount];
+        var names = new string[sszFieldCount];
 
         foreach (var property in typeProperties)
         {
@@ -152,8 +157,9 @@ public static class SszSchemaGenerator
             fieldTypes[index] = type;
             getters[index] = (p) => Wrap(type, property.GetValue(p));
             setters[index] = (t, p) => property.SetValue(t, Unwrap(type, property.PropertyType, p));
+            names[index] = property.Name;
         }
 
-        return (fieldTypes, getters, setters);
+        return (fieldTypes, getters, setters, names);
     }
 }
