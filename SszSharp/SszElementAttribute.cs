@@ -53,7 +53,18 @@ public class SszElementAttribute : Attribute
         return ret.ToArray();
     }
 
-    public static ISszType? ConstructType(string descriptor, Type parameterType)
+    static long? ResolveLength(string lengthSpec, SizePreset? preset)
+    {
+        if (long.TryParse(lengthSpec, out long length))
+            return length;
+
+        if (preset?.Parameters.ContainsKey(lengthSpec) == true)
+            return preset.Parameters[lengthSpec];
+
+        return null;
+    }
+
+    public static ISszType? ConstructType(string descriptor, Type parameterType, SizePreset? preset)
     {
         if (descriptor.StartsWith("uint"))
         {
@@ -76,23 +87,25 @@ public class SszElementAttribute : Attribute
         if (descriptor.StartsWith("Bitvector"))
         {
             var lengthSpec = descriptor.Substring("Bitvector".Length).Trim('[', ']');
-            if (long.TryParse(lengthSpec, out long length))
+            var length = ResolveLength(lengthSpec, preset);
+            if (length.HasValue)
             {
-                return new SszBitvector(length);
+                return new SszBitvector(length.Value);
             }
         }
         if (descriptor.StartsWith("Bitlist"))
         {
             var lengthSpec = descriptor.Substring("Bitlist".Length).Trim('[', ']');
-            if (long.TryParse(lengthSpec, out long length))
+            var length = ResolveLength(lengthSpec, preset);
+            if (length.HasValue)
             {
-                return new SszBitlist(length);
+                return new SszBitlist(length.Value);
             }
         }
         if (descriptor.StartsWith("Union"))
         {
             var typesSpec = SplitUpperLevelCommas(descriptor.Substring("Union".Length).Trim('[', ']'));
-            return new SszUnion(typesSpec.Select(s => ConstructType(s, parameterType)).ToArray());
+            return new SszUnion(typesSpec.Select(s => ConstructType(s, parameterType, preset)).ToArray());
         }
 
         if (descriptor.StartsWith("Vector"))
@@ -100,27 +113,19 @@ public class SszElementAttribute : Attribute
             var spec = SplitUpperLevelCommas(descriptor.Substring("Vector".Length).Trim('[', ']'));
             var typeSpec = spec[0];
             var lengthSpec = spec[1];
-            if (long.TryParse(lengthSpec, out long length))
+            var length = ResolveLength(lengthSpec, preset);
+            if (length.HasValue)
             {
-                Type memberRepresentativeType = default(Type);
-
-                if (parameterType.IsArray)
-                {
-                    memberRepresentativeType = parameterType.GetElementType();
-                }
-                else if (parameterType.GetInterfaces()
-                         .Any(iface => iface.FullName.StartsWith("System.Collections.Generic.IList")))
-                {
-                    memberRepresentativeType = parameterType.GetInterfaces()
-                        .First(iface => iface.FullName.StartsWith("System.Collections.Generic.IList")).GenericTypeArguments[0];
-                }
+                var memberRepresentativeType = parameterType.GetEnumerationMemberType() ??
+                                               throw new Exception($"Could not resolve member type of parameter wih type {parameterType}");
+                var memberType = ConstructType(typeSpec, memberRepresentativeType, preset) ??
+                                 throw new Exception($"Could not create member SSZ type with typespec {typeSpec} and representative type {memberRepresentativeType}");
+                var returnType = memberType.RepresentativeType;
                 
-                var memberType = ConstructType(typeSpec, memberRepresentativeType);
-                var returnType = memberType.GetType().GetInterfaces()
-                    .First(iface => iface.Name.StartsWith("ISszType") && iface.IsConstructedGenericType)
-                    .GenericTypeArguments[0];
-                return (ISszType)Activator.CreateInstance(
-                    typeof(SszVector<,>).MakeGenericType(new[] {returnType, memberType.GetType()}), new object[] { memberType, length });
+                return (ISszType) (Activator.CreateInstance(
+                                       typeof(SszVector<,>).MakeGenericType(returnType, memberType.GetType()), 
+                                       memberType, 
+                                       length.Value) ?? throw new Exception($"Failed to create vector of type {memberType}"));
             }
         }
         if (descriptor.StartsWith("List"))
@@ -128,37 +133,26 @@ public class SszElementAttribute : Attribute
             var spec = SplitUpperLevelCommas(descriptor.Substring("List".Length).Trim('[', ']'));
             var typeSpec = spec[0];
             var lengthSpec = spec[1];
-            if (long.TryParse(lengthSpec, out long length))
+            var length = ResolveLength(lengthSpec, preset);
+            if (length.HasValue)
             {
-                Type memberRepresentativeType = default(Type);
-
-                if (parameterType.IsArray)
-                {
-                    memberRepresentativeType = parameterType.GetElementType();
-                }
-                else if (parameterType.GetInterfaces()
-                         .Any(iface => iface.FullName.StartsWith("System.Collections.Generic.IList")))
-                {
-                    memberRepresentativeType = parameterType.GetInterfaces()
-                        .First(iface => iface.FullName.StartsWith("System.Collections.Generic.IList")).GenericTypeArguments[0];
-                }
+                var memberRepresentativeType = parameterType.GetEnumerationMemberType() ?? 
+                                               throw new Exception($"Could not resolve member type of parameter wih type {parameterType}");
+                var memberType = ConstructType(typeSpec, memberRepresentativeType, preset) ??
+                                 throw new Exception($"Could not create member SSZ type with typespec {typeSpec} and representative type {memberRepresentativeType}");
+                var returnType = memberType.RepresentativeType;
                 
-                var memberType = ConstructType(typeSpec, memberRepresentativeType);
-                var returnType = memberType.GetType().GetInterfaces()
-                    .First(iface => iface.Name.StartsWith("ISszType") && iface.IsConstructedGenericType)
-                    .GenericTypeArguments[0];
-                return (ISszType)Activator.CreateInstance(
-                    typeof(SszList<,>).MakeGenericType(new[] {returnType, memberType.GetType()}), new object[] { memberType, length });
+                return (ISszType) (Activator.CreateInstance(
+                                       typeof(SszList<,>).MakeGenericType(returnType, memberType.GetType()), 
+                                       memberType,
+                                       length.Value) ?? throw new Exception($"Failed to create list of type {memberType}"));
             }
         }
 
         if (descriptor == "Container")
         {
-            var containerSchema = (typeof(SszSchemaGenerator).GetMethod("GetSchemaWithUntypedFactory")
-                    .MakeGenericMethod(new[] {parameterType}))
-                .Invoke(null, new object[] {() => Activator.CreateInstance(parameterType, null)});
-            return (ISszType)(Activator.CreateInstance(typeof(SszContainer<>).MakeGenericType(new[] {parameterType}),
-                new[] {containerSchema}));
+            var containerSchema = SszSchemaGenerator.GetSchema(parameterType, preset);
+            return (ISszType)(Activator.CreateInstance(typeof(SszContainer<>).MakeGenericType(parameterType), containerSchema) ?? throw new Exception($"Failed to create container for {parameterType}"));
         }
 
         if (descriptor.StartsWith("Container["))
@@ -166,12 +160,10 @@ public class SszElementAttribute : Attribute
             var containerTypeName = descriptor.Substring("Container".Length).Trim('[', ']');
             var containerType = Type.GetType(containerTypeName) ?? throw new Exception($"Could not find type {containerTypeName}");
             
-            var containerSchema = (typeof(SszSchemaGenerator).GetMethod("GetSchemaWithUntypedFactory").MakeGenericMethod(new[] {containerType}))
-                .Invoke(null, new object[] {() => Activator.CreateInstance(containerType, null)});
-            return (ISszType)(Activator.CreateInstance(typeof(SszContainer<>).MakeGenericType(new[] {containerType}),
-                new[] {containerSchema}));
+            var containerSchema = SszSchemaGenerator.GetSchema(containerType, preset);
+            return (ISszType)(Activator.CreateInstance(typeof(SszContainer<>).MakeGenericType(containerType), containerSchema) ?? throw new Exception($"Failed to create container for {containerType}"));
         }
 
-        return null;
+        throw new Exception($"Could not construct type from typespec {descriptor}");
     }
 }

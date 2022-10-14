@@ -2,6 +2,7 @@ namespace SszSharp;
 
 public interface ISszContainerSchema
 {
+    public SizePreset? Preset { get; }
     public ISszContainerField[] FieldsUntyped { get; }
     public void SetUntyped(object t, int fieldIndex, object? value);
     public object? GetUntyped(object t, int fieldIndex);
@@ -54,19 +55,22 @@ public class SszContainerField<T> : ISszContainerField<T>
 
 public class SszContainerSchema<T> : ISszContainerSchema<T>
 {
+    public SizePreset? Preset { get; }
     public ISszContainerField[] FieldsUntyped { get; }
     public ISszContainerField<T>[] Fields { get; }
     public readonly Func<T> Factory;
 
-    public SszContainerSchema(ISszContainerField<T>[] fields, Func<T> factory)
+    public SszContainerSchema(ISszContainerField<T>[] fields, Func<T> factory, SizePreset? preset)
     {
         FieldsUntyped = Fields = fields;
         Factory = factory;
+        Preset = preset;
     }
-    public SszContainerSchema(ISszContainerField<T>[] fields, Func<object> untypedFactory)
+    public SszContainerSchema(ISszContainerField<T>[] fields, Func<object> untypedFactory, SizePreset? preset)
     {
         FieldsUntyped = Fields = fields;
         Factory = () => (T)untypedFactory();
+        Preset = preset;
     }
 
     public void Set(T t, int fieldIndex, object? value) => Fields[fieldIndex].Set(t, value);

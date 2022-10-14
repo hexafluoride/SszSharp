@@ -54,7 +54,7 @@ public class ExecutionPayload
     public byte[] StateRoot { get; set; }
     [SszElement(3, "Vector[uint8, 32]")]
     public byte[] ReceiptsRoot { get; set; }
-    [SszElement(4, "Vector[uint8, 256]")]
+    [SszElement(4, "Vector[uint8, BYTES_PER_LOGS_BLOOM]")]
     public byte[] LogsBloom { get; set; }
     [SszElement(5, "Vector[uint8, 32]")]
     public byte[] PrevRandao { get; set; }
@@ -66,13 +66,13 @@ public class ExecutionPayload
     public ulong GasUsed { get; set; }
     [SszElement(9, "uint64")]
     public ulong Timestamp { get; set; }
-    [SszElement(10, "List[uint8, 32]")]
+    [SszElement(10, "List[uint8, MAX_EXTRA_DATA_BYTES]")]
     public byte[] ExtraData { get; set; }
     [SszElement(11, "uint256")]
     public BigInteger BaseFeePerGas { get; set; }
     [SszElement(12, "Vector[uint8, 32]")]
     public byte[] BlockHash { get; set; }
-    [SszElement(13, "List[List[uint8, 1073741824], 1048576]")]
+    [SszElement(13, "List[List[uint8, MAX_BYTES_PER_TRANSACTION], MAX_TRANSACTIONS_PER_PAYLOAD]")]
     public List<byte[]> Transactions { get; set; }
 }
 
@@ -125,7 +125,7 @@ public class ExecutionPayloadHeader
     public byte[] StateRoot { get; set; }
     [SszElement(3, "Vector[uint8, 32]")]
     public byte[] ReceiptsRoot { get; set; }
-    [SszElement(4, "Vector[uint8, 256]")]
+    [SszElement(4, "Vector[uint8, BYTES_PER_LOGS_BLOOM]")]
     public byte[] LogsBloom { get; set; }
     [SszElement(5, "Vector[uint8, 32]")]
     public byte[] PrevRandao { get; set; }
@@ -137,7 +137,7 @@ public class ExecutionPayloadHeader
     public ulong GasUsed { get; set; }
     [SszElement(9, "uint64")]
     public ulong Timestamp { get; set; }
-    [SszElement(10, "List[uint8, 32]")]
+    [SszElement(10, "List[uint8, MAX_EXTRA_DATA_BYTES]")]
     public byte[] ExtraData { get; set; }
     [SszElement(11, "uint256")]
     public BigInteger BaseFeePerGas { get; set; }

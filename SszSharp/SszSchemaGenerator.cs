@@ -1,5 +1,6 @@
 using System.Collections;
 using System.Numerics;
+using System.Reflection;
 
 namespace SszSharp;
 
@@ -110,29 +111,43 @@ public static class SszSchemaGenerator
         return value;
     }
 
-    public static Dictionary<Type, ISszContainerSchema> CachedSchemas = new();
-    
-    public static SszContainerSchema<T> GetSchema<T>(Func<T> factory)
-    {
-        if (CachedSchemas.ContainsKey(typeof(T)))
-            return (SszContainerSchema<T>)CachedSchemas[typeof(T)];
-        
-        var schema = new SszContainerSchema<T>(GetSchemaFieldsFromAttributes<T>(), factory);
-        CachedSchemas[typeof(T)] = schema;
-        return schema;
-    }
-    
-    public static SszContainerSchema<T> GetSchemaWithUntypedFactory<T>(Func<object> factory)
-    {
-        if (CachedSchemas.ContainsKey(typeof(T)))
-            return (SszContainerSchema<T>)CachedSchemas[typeof(T)];
+    public static Dictionary<(Type, SizePreset?), ISszContainerSchema> CachedSchemas = new();
 
-        var schema = new SszContainerSchema<T>(GetSchemaFieldsFromAttributes<T>(), factory);
-        CachedSchemas[typeof(T)] = schema;
+    public static SszContainerSchema<T> GetSchema<T>(SizePreset? preset, Func<T>? factory = null)
+    {
+        preset ??= SizePreset.DefaultPreset;
+        var cacheKey = (typeof(T), preset);
+        if (CachedSchemas.ContainsKey(cacheKey))
+            return (SszContainerSchema<T>)CachedSchemas[cacheKey];
+
+        var schema = new SszContainerSchema<T>(GetSchemaFieldsFromAttributes<T>(preset),
+            factory ?? (() => Activator.CreateInstance<T>()), preset);
+        
+        CachedSchemas[cacheKey] = schema;
         return schema;
     }
     
-    static ISszContainerField<T>[] GetSchemaFieldsFromAttributes<T>()
+    public static ISszContainerSchema GetSchema(Type t, SizePreset? preset, Func<object>? factory = null)
+    {
+        preset ??= SizePreset.DefaultPreset;
+        var cacheKey = (t, preset);
+        if (CachedSchemas.ContainsKey(cacheKey))
+            return CachedSchemas[cacheKey];
+        
+        var fields = typeof(SszSchemaGenerator).GetMethod(nameof(GetSchemaFieldsFromAttributes), BindingFlags.Static | BindingFlags.NonPublic)!.MakeGenericMethod(t)
+            .Invoke(null, new object?[] {preset}) ?? throw new Exception($"Could not generate schema for {t}");
+        var containerType = typeof(SszContainerSchema<>).MakeGenericType(t);
+        var schema =
+            (ISszContainerSchema) (Activator.CreateInstance(containerType, fields,
+                                       factory ?? (() => Activator.CreateInstance(t)!),
+                                       preset) ??
+                                   throw new Exception($"Could not construct SszContainer for {t}"));
+        
+        CachedSchemas[cacheKey] = schema;
+        return schema;
+    }
+    
+    static ISszContainerField<T>[] GetSchemaFieldsFromAttributes<T>(SizePreset? preset)
     {
         var containerType = typeof(T);
         var typeProperties = containerType.GetProperties();
@@ -149,7 +164,7 @@ public static class SszSchemaGenerator
 
             var elementAttribute = elementAttributes.OfType<SszElementAttribute>().Single();
             var index = elementAttribute.Index;
-            var type = SszElementAttribute.ConstructType(elementAttribute.TypeDescriptor, property.PropertyType) ??
+            var type = SszElementAttribute.ConstructType(elementAttribute.TypeDescriptor, property.PropertyType, preset) ??
                        throw new Exception(
                            $"Failed to construct type for property {property.Name} in type {containerType}");
 

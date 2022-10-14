@@ -24,4 +24,35 @@
       <ProjectReference Include="..\SszSharp\SszSharp.csproj" />
     </ItemGroup>
 
+    <ItemGroup>
+      <None Remove="TestData\BeaconState.ssz" />
+      <Content Include="TestData\BeaconState.ssz">
+        <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      </Content>
+      <None Remove="TestData\ExecutionPayloadHeader.ssz" />
+      <Content Include="TestData\ExecutionPayloadHeader.ssz">
+        <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      </Content>
+      <None Remove="TestData\genesis.ssz" />
+      <Content Include="TestData\genesis.ssz">
+        <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      </Content>
+      <None Remove="TestData\ValidatorNodeStruct.ssz" />
+      <Content Include="TestData\ValidatorNodeStruct.ssz">
+        <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      </Content>
+      <None Remove="TestData\Validators.ssz" />
+      <Content Include="TestData\Validators.ssz">
+        <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      </Content>
+      <None Remove="TestData\SyncCommittee.ssz" />
+      <Content Include="TestData\SyncCommittee.ssz">
+        <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      </Content>
+      <None Remove="TestData\ExecutionPayload.ssz" />
+      <Content Include="TestData\ExecutionPayload.ssz">
+        <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      </Content>
+    </ItemGroup>
+
 </Project>

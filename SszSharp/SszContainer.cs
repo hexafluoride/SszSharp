@@ -1,14 +1,50 @@
 namespace SszSharp;
 
+public static class SszContainer
+{
+    
+    // static convenience method
+    private static Dictionary<(Type, SizePreset), ISszType> CachedContainers = new();
+
+    private static ISszType CreateContainer(Type type, SizePreset? preset = null)
+    {
+        preset ??= SizePreset.DefaultPreset;
+        return (ISszType) (Activator.CreateInstance(typeof(SszContainer<>).MakeGenericType(type), preset) ??
+                           throw new Exception($"Could not construct container for {type}"));
+    }
+    public static SszContainer<T> GetContainer<T>(SizePreset? preset = null)
+    {
+        var cacheKey = (typeof(T), preset ?? SizePreset.DefaultPreset);
+        if (!CachedContainers.ContainsKey(cacheKey))
+            CachedContainers[cacheKey] = CreateContainer(typeof(T), preset);
+        return (SszContainer<T>) CachedContainers[cacheKey];
+    }
+
+    public static (T, int) Deserialize<T>(ReadOnlySpan<byte> span, SizePreset? preset = null) =>
+        GetContainer<T>(preset).Deserialize(span);
+    public static int Serialize<T>(T t, Span<byte> span, SizePreset? preset = null) =>
+        GetContainer<T>(preset).Serialize(t, span);
+    public static byte[] HashTreeRoot<T>(T t, SizePreset? preset = null) =>
+        Merkleizer.HashTreeRoot(GetContainer<T>(preset), t);
+}
+
 public class SszContainer<TReturn> : ISszType<TReturn>
 {
     public Type RepresentativeType => typeof(TReturn);
     public readonly ISszContainerSchema<TReturn> Schema;
 
+    public SszContainer(SizePreset? preset)
+        : this(SszSchemaGenerator.GetSchema<TReturn>(preset))
+    {
+        
+    }
+    
     public SszContainer(ISszContainerSchema<TReturn> schema)
     {
         Schema = schema;
     }
+
+    public byte[] HashTreeRoot(TReturn t) => Merkleizer.HashTreeRoot(this, t);
 
     public (object, int) DeserializeUntyped(ReadOnlySpan<byte> span) => Deserialize(span);
     public (TReturn, int) Deserialize(ReadOnlySpan<byte> span)
@@ -62,7 +98,7 @@ public class SszContainer<TReturn> : ISszType<TReturn>
                     ? span.Length
                     : variableOffsets.Skip(i + 1).First(k => k > 0);
 
-                if (currentOffset > int.MaxValue || currentOffset > span.Length)
+                if (currentOffset > span.Length)
                 {
                     throw new Exception("Offset too large");
                 }

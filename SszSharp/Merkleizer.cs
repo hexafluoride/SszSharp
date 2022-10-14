@@ -224,35 +224,10 @@ public static class Merkleizer
         return ZeroHashes[depth];
     }
 
-    /*
-     * export function zeroHash(depth: number): Uint8Array {
-  if (depth >= zeroHashes.length) {
-    for (let i = zeroHashes.length; i <= depth; i++) {
-      zeroHashes[i] = digest2Bytes32(zeroHashes[i - 1], zeroHashes[i - 1]);
-    }
-  }
-  return zeroHashes[depth];
-}
-     */
-    
     public static long NextPowerOfTwo(int i) => (long)Math.Pow(2, Math.Ceiling(Math.Log2(i)));
     public static long NextPowerOfTwo(long l) => (long)Math.Pow(2, Math.Ceiling(Math.Log2(l)));
     public static long LastPowerOfTwo(int i) => (long)Math.Pow(2, Math.Floor(Math.Log2(i)));
     public static long LastPowerOfTwo(long l) => (long)Math.Pow(2, Math.Floor(Math.Log2(l)));
-
-    public static bool IsBasicType(this ISszType type) => type is SszBoolean || type is SszInteger;
-    public static bool IsList(this ISszType type) => (type.GetType().IsGenericType && type.GetType().GetGenericTypeDefinition() == typeof(SszList<,>));
-    public static bool IsVector(this ISszType type) => (type.GetType().IsGenericType && type.GetType().GetGenericTypeDefinition() == typeof(SszVector<,>));
-    public static bool IsContainer(this ISszType type) => (type.GetType().IsGenericType && type.GetType().GetGenericTypeDefinition() == typeof(SszContainer<>));
-    public static bool IsUnion(this ISszType type) => type is SszUnion;
-
-    public static ISszContainerSchema GetSchema(this ISszType type) =>
-        (ISszContainerSchema) (type.GetType().GetField("Schema")!.GetValue(type)!);
-
-    public static IEnumerable<object> GetGenericEnumerable(this object o) => GetTypedEnumerable<object>(o);
-    public static IEnumerable<T> GetTypedEnumerable<T>(this object o) => (IEnumerable<T>)(typeof(Enumerable).GetMethod("Cast")!.MakeGenericMethod(new[] {typeof(T)}).Invoke(null, new object[] { o })!);
-    public static object GetTypedEnumerable(this object o, Type t) => (typeof(Enumerable).GetMethod("Cast")!.MakeGenericMethod(new[] {t}).Invoke(null, new object[] { o })!);
-    //public static object UntypedEnumerableToArray(this object o, Type t) => 
     public static int MerkleItemLength(this ISszType type) => type.IsBasicType() ? type.LengthUntyped(default!) : 32;
 
     public static (int, int, int) GetItemPosition(ISszType type, int index)

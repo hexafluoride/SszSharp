@@ -29,7 +29,7 @@ public class AssortedTests
     [Fact]
     public void VectorTest_Nested1()
     {
-        var vectorOfIntVectorsType = new SszVector<IEnumerable<SszIntegerWrapper>, SszVector<SszIntegerWrapper, SszInteger>>(memberType: new SszVector<SszIntegerWrapper, SszInteger>(memberType: new SszInteger(bits: 32), count: 20), count: 4);
+        var vectorOfIntVectorsType = new SszVector<IEnumerable<SszIntegerWrapper>, SszVector<SszIntegerWrapper, SszInteger>>(memberType: new SszVector<SszIntegerWrapper, SszInteger>(memberType: new SszInteger(bits: 32), capacity: 20), capacity: 4);
         var elems = Enumerable.Range(1, 4).Select(k => Enumerable.Range(1, 20).Select(i => new SszIntegerWrapper(32, (uint)Random.Shared.Next())).ToList()).ToList();
         TestRoundtrip(vectorOfIntVectorsType, elems);
     }
@@ -91,9 +91,7 @@ public class AssortedTests
     [Fact]
     public void ContainerTest()
     {
-        var executionPayloadSchema =
-            SszSchemaGenerator.GetSchema(() => new ExecutionPayload());
-        var executionPayloadType = new SszContainer<ExecutionPayload>(executionPayloadSchema);
+        var executionPayloadType = new SszContainer<ExecutionPayload>(SizePreset.MinimalPreset);
         var payload = new ExecutionPayload()
         {
             Root = GenerateRandomBytes(32),
@@ -109,7 +107,7 @@ public class AssortedTests
             Timestamp = 193484832,
             ReceiptsRoot = GenerateRandomBytes(32),
             StateRoot = GenerateRandomBytes(32),
-            Transactions = new []
+            Transactions = new()
             {
                 GenerateRandomBytes(100),
                 GenerateRandomBytes(200),
@@ -139,12 +137,7 @@ public class AssortedTests
             bytes[i / 2] = byte.Parse(bytesStr.Substring(i, 2), NumberStyles.HexNumber);
         }
         
-        
-        var executionPayloadSchema =
-            SszSchemaGenerator.GetSchema(() => new ExecutionPayload());
-        var executionPayloadType = new SszContainer<ExecutionPayload>(executionPayloadSchema);
-        (var deserializedPayload, var consumed) = executionPayloadType.Deserialize(bytes);
-
+        (var deserializedPayload, var consumed) = SszContainer.Deserialize<ExecutionPayload>(bytes, SizePreset.MainnetPreset);
         Debugger.Break();
     }
 
@@ -181,18 +174,13 @@ public class AssortedTests
             },
             Slot = 20
         };
-        //throw new Exception();
-
-        var beaconStateType = new SszContainer<BeaconState>(SszSchemaGenerator.GetSchema(() => new BeaconState()));
-        
-        //TestRoundtrip(beaconStateType, beaconState, bufSize: 1000000);
     }
 
     [Fact]
     public void BeaconStateTest2()
     {
-        var beaconStateBytes = File.ReadAllBytes("/home/kate/repos/lodestar/genesis.ssz");
-        var beaconStateType = new SszContainer<BeaconState>(SszSchemaGenerator.GetSchema(() => new BeaconState()));
+        var beaconStateBytes = File.ReadAllBytes("TestData/genesis.ssz");
+        var beaconStateType = SszContainer.GetContainer<BeaconState>(SizePreset.MinimalPreset);
         (var beaconState, var consumed) = beaconStateType.Deserialize(beaconStateBytes);
         
         //Debugger.Break();
@@ -200,6 +188,107 @@ public class AssortedTests
         var reserialized = beaconStateType.Serialize(beaconState, new Span<byte>(buf));
         
         Assert.Equal(buf, beaconStateBytes);
+
+        var sw = Stopwatch.StartNew();
+        var root = beaconStateType.HashTreeRoot(beaconState);
+        
+        _testOutputHelper.WriteLine(ToPrettyString(root));
+        _testOutputHelper.WriteLine(sw.ElapsedMilliseconds.ToString());
+
+        var schema = beaconStateType.Schema;
+
+        for (int i = 0; i < schema.Fields.Length; i++)
+        {
+            var field = schema.Fields[i];
+            _testOutputHelper.WriteLine($"{field.Name}: {ToPrettyString(Merkleizer.HashTreeRoot(field.FieldType, schema.Get(beaconState, i)))}");
+        }
+    }
+
+    [Fact]
+    public void ValidatorsTest()
+    {
+        var bytes = File.ReadAllBytes("TestData/Validators.ssz");
+        var validatorType = SszContainer.GetContainer<ValidatorNodeStruct>(SizePreset.MainnetPreset);
+        var validatorsType =
+            new SszList<ValidatorNodeStruct, SszContainer<ValidatorNodeStruct>>(validatorType, 1099511627776);
+        (var deserialized, var consumed) = validatorsType.Deserialize(bytes);
+        var buf = new byte[consumed];
+        var span = new Span<byte>(buf);
+        var reserializedCount = validatorsType.Serialize(deserialized, span);
+        
+        Assert.Equal(buf, bytes);
+        
+        _testOutputHelper.WriteLine(ToPrettyString(Merkleizer.HashTreeRoot(validatorsType, deserialized)));
+
+        var i = 0;
+        foreach (var validator in deserialized)
+        {
+            
+            _testOutputHelper.WriteLine(i++ + ": " + ToPrettyString(Merkleizer.HashTreeRoot(validatorType, validator)));
+        }
+    }
+    [Fact]
+    public void ValidatorTest()
+    {
+        var bytes = File.ReadAllBytes("TestData/ValidatorNodeStruct.ssz");
+        var type = SszContainer.GetContainer<ValidatorNodeStruct>(SizePreset.MainnetPreset);
+        (var deserialized, var consumed) = type.Deserialize(bytes);
+        var buf = new byte[consumed];
+        var span = new Span<byte>(buf);
+        var reserializedCount = type.Serialize(deserialized, span);
+        
+        Assert.Equal(buf, bytes);
+        
+        _testOutputHelper.WriteLine(ToPrettyString(Merkleizer.HashTreeRoot(type, deserialized)));
+    }
+    
+    [Fact]
+    public void ExecutionPayloadHeaderTest()
+    {
+        var beaconStateBytes = File.ReadAllBytes("TestData/ExecutionPayloadHeader.ssz");
+        var type = SszContainer.GetContainer<ExecutionPayloadHeader>(SizePreset.MainnetPreset);
+        (var beaconState, var consumed) = type.Deserialize(beaconStateBytes);
+        
+        //Debugger.Break();
+        var buf = new byte[consumed];
+        var reserialized = type.Serialize(beaconState, new Span<byte>(buf));
+        
+        Assert.Equal(buf, beaconStateBytes);
+
+        var root = Merkleizer.HashTreeRoot(type, beaconState);
+        PrintBytes(new Span<byte>(root), root.Length);
+    }
+    [Fact]
+    public void SyncCommiteeTest()
+    {
+        var beaconStateBytes = File.ReadAllBytes("TestData/SyncCommittee.ssz");
+        var type = SszContainer.GetContainer<SyncCommittee>(SizePreset.MainnetPreset);
+        (var beaconState, var consumed) = type.Deserialize(beaconStateBytes);
+        
+        //Debugger.Break();
+        var buf = new byte[consumed];
+        var reserialized = type.Serialize(beaconState, new Span<byte>(buf));
+        
+        Assert.Equal(buf, beaconStateBytes);
+
+        var root = Merkleizer.HashTreeRoot(type, beaconState);
+        PrintBytes(new Span<byte>(root), root.Length);
+    }
+    [Fact]
+    public void ExecutionPayloadTest()
+    {
+        var beaconStateBytes = File.ReadAllBytes("TestData/ExecutionPayload.ssz");
+        var type = SszContainer.GetContainer<ExecutionPayload>(SizePreset.MainnetPreset);
+        (var beaconState, var consumed) = type.Deserialize(beaconStateBytes);
+        
+        //Debugger.Break();
+        var buf = new byte[consumed];
+        var reserialized = type.Serialize(beaconState, new Span<byte>(buf));
+        
+        Assert.Equal(buf, beaconStateBytes);
+
+        var root = Merkleizer.HashTreeRoot(type, beaconState);
+        PrintBytes(new Span<byte>(root), root.Length);
     }
 
     void TestRoundtrip<T>(ISszType<T> sszType, T value, int bufSize = 65536)
@@ -214,6 +303,11 @@ public class AssortedTests
         Assert.True(RecursiveEqualityCheck(deserialized, value));
     }
 
+    string ToPrettyString(byte[] arr)
+    {
+        return BitConverter.ToString(arr).Replace("-", "").ToLower();
+    }
+    
     bool RecursiveEqualityCheck(object a, object b)
     {
         var aInterfaces = a.GetType().GetInterfaces();
@@ -246,7 +340,7 @@ public class AssortedTests
         return a.Equals(b);
     }
 
-    void PrintBytes(Span<byte> buf, int length = -1)
+    void PrintBytes(ReadOnlySpan<byte> buf, int length = -1)
     {
         if (length == -1)
             length = buf.Length;
