@@ -2,6 +2,7 @@ namespace SszSharp;
 
 public class SszBoolean : ISszType<bool>
 {
+    public Type RepresentativeType => typeof(bool);
     public int SerializeUntyped(object obj, Span<byte> span) => Serialize((bool)obj, span);
     public int Serialize(bool b, Span<byte> span)
     {

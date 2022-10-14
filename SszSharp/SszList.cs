@@ -1,10 +1,12 @@
 namespace SszSharp;
 
-public class SszList<TReturn, TDescriptor> : ISszType<IEnumerable<TReturn>>
+public class SszList<TReturn, TDescriptor> : ISszCollection<TReturn, TDescriptor>
     where TDescriptor : ISszType<TReturn>
 {
-    public readonly long Capacity;
-    public readonly TDescriptor MemberType;
+    public Type RepresentativeType => typeof(IEnumerable<TReturn>);
+    public long Capacity { get; }
+    public TDescriptor MemberType { get; }
+    public ISszType MemberTypeUntyped => MemberType;
     
     public SszList(TDescriptor memberType, long capacity)
     {

@@ -2,6 +2,7 @@ namespace SszSharp;
 
 public interface ISszType
 {
+    public Type RepresentativeType { get; }
     public (object, int) DeserializeUntyped(ReadOnlySpan<byte> span);
     public int SerializeUntyped(object t, Span<byte> span);
     public int LengthUntyped(object t);

@@ -3,6 +3,7 @@ namespace SszSharp;
 public class SszBitlist : ISszType<IEnumerable<bool>>
 {
     public readonly long Capacity;
+    public Type RepresentativeType => typeof(IEnumerable<bool>);
 
     public SszBitlist(long capacity)
     {

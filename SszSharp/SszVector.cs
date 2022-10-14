@@ -1,32 +1,34 @@
 namespace SszSharp;
 
-public class SszVector<TReturn, TDescriptor> : ISszType<IEnumerable<TReturn>>
+public class SszVector<TReturn, TDescriptor> : ISszCollection<TReturn, TDescriptor>
     where TDescriptor : ISszType<TReturn>
 {
-    public readonly long Count;
-    public readonly TDescriptor MemberType;
+    public Type RepresentativeType => typeof(IEnumerable<TReturn>);
+    public long Capacity { get; }
+    public TDescriptor MemberType { get; }
+    public ISszType MemberTypeUntyped => MemberType;
     
-    public SszVector(TDescriptor memberType, long count)
+    public SszVector(TDescriptor memberType, long capacity)
     {
         MemberType = memberType;
-        Count = count;
+        Capacity = capacity;
     }
 
     public (object, int) DeserializeUntyped(ReadOnlySpan<byte> span) => Deserialize(span);
     public (IEnumerable<TReturn>, int) Deserialize(ReadOnlySpan<byte> span)
     {
-        var ret = new TReturn[Count];
+        var ret = new TReturn[Capacity];
         int lastOffset = -1;
         int nextExpectedOffset = -1;
         int fixedPartIndex = 0;
         int totalConsumed = 0;
         
-        for (int i = 0; i < Count; i++)
+        for (int i = 0; i < Capacity; i++)
         {
             if (MemberType.IsVariableLength())
             {
                 var nextOffset = BitConverter.ToUInt32(span.Slice(fixedPartIndex));
-                var nextOffsetLimit = i == (Count - 1)
+                var nextOffsetLimit = i == (Capacity - 1)
                     ? span.Length
                     : (int)BitConverter.ToUInt32(span.Slice(fixedPartIndex + 4));
                 totalConsumed += 4;
@@ -59,7 +61,7 @@ public class SszVector<TReturn, TDescriptor> : ISszType<IEnumerable<TReturn>>
                 if (lastOffset == -1)
                     lastOffset = 0;
 
-                (TReturn deserialized, int consumedBytes) = MemberType.Deserialize(span.Slice(lastOffset, MemberType.Length(default)));
+                (TReturn deserialized, int consumedBytes) = MemberType.Deserialize(span.Slice(lastOffset, MemberType.Length(default!)));
                 totalConsumed += consumedBytes;
                 lastOffset += consumedBytes;
                 ret[i] = deserialized;
@@ -74,9 +76,9 @@ public class SszVector<TReturn, TDescriptor> : ISszType<IEnumerable<TReturn>>
     {
         var enumerated = t.ToList();
 
-        if (enumerated.Count != Count)
+        if (enumerated.Count != Capacity)
         {
-            throw new InvalidOperationException($"Vector must contain {Count} elements, given {enumerated.Count}");
+            throw new InvalidOperationException($"Vector must contain {Capacity} elements, given {enumerated.Count}");
         }
         
         var fixedParts = new int[enumerated.Count];
@@ -88,7 +90,6 @@ public class SszVector<TReturn, TDescriptor> : ISszType<IEnumerable<TReturn>>
             var value = enumerated[i];
             if (MemberType.IsVariableLength())
             {
-                //fixedParts[i] = span.Slice(consumed, 4);
                 fixedParts[i] = consumed;
                 consumed += 4;
             }
@@ -117,17 +118,20 @@ public class SszVector<TReturn, TDescriptor> : ISszType<IEnumerable<TReturn>>
 
         return consumed;
     }
-    
-    public int Length(IEnumerable<TReturn> t) => (int)(MemberType.IsVariableLength() ? t.Select(MemberType.Length).Sum() + (MemberType.IsVariableLength() ? SszConstants.BytesPerOffset * Count : 0) : Count * MemberType.Length(default));
+
+    public int Length(IEnumerable<TReturn> t) => (int) (MemberType.IsVariableLength()
+        ? t.Select(MemberType.Length).Sum() +
+          (MemberType.IsVariableLength() ? SszConstants.BytesPerOffset * Capacity : 0)
+        : Capacity * MemberType.Length(default!));
     public bool IsVariableLength() => MemberType.IsVariableLength();
     public long ChunkCount(IEnumerable<TReturn> t)
     {
-        if (MemberType is SszInteger || MemberType is SszBoolean)
+        if (MemberType is SszInteger or SszBoolean)
         {
-            return (Count * MemberType.Length(default(TReturn)) + 31) / 32;
+            return (Capacity * MemberType.Length(default!) + 31) / 32;
         }
 
-        return Count;
+        return Capacity;
     }
     public int LengthUntyped(object t) => Length((IEnumerable<TReturn>)t);
     public long ChunkCountUntyped(object t) => ChunkCount((IEnumerable<TReturn>)t);

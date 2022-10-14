@@ -2,6 +2,7 @@ namespace SszSharp;
 
 public class SszUnion : ISszType<SszUnionWrapper>
 {
+    public Type RepresentativeType => typeof(SszUnionWrapper);
     public readonly ISszType?[] MemberTypes;
 
     public SszUnion(ISszType?[] memberTypes)

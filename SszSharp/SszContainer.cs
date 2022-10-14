@@ -2,6 +2,7 @@ namespace SszSharp;
 
 public class SszContainer<TReturn> : ISszType<TReturn>
 {
+    public Type RepresentativeType => typeof(TReturn);
     public readonly ISszContainerSchema<TReturn> Schema;
 
     public SszContainer(ISszContainerSchema<TReturn> schema)
@@ -19,13 +20,14 @@ public class SszContainer<TReturn> : ISszType<TReturn>
         int totalConsumed = 0;
         var contentsStart = -1;
 
-        var variableOffsets = new int[Schema.FieldTypes.Length];
+        var variableOffsets = new int[Schema.Fields.Length];
         int lastVariableOffsetIndex = -1;
         
-        for (int i = 0; i < Schema.FieldTypes.Length; i++)
+        for (int i = 0; i < Schema.Fields.Length; i++)
         {
-            var type = Schema.FieldTypes[i];
-            if (type.IsVariableLength())
+            var field = Schema.Fields[i];
+            var fieldType = field.FieldType;
+            if (fieldType.IsVariableLength())
             {
                 variableOffsets[i] = (int)BitConverter.ToUInt32(span.Slice(fixedPartIndex));
                 fixedPartIndex += 4;
@@ -37,18 +39,18 @@ public class SszContainer<TReturn> : ISszType<TReturn>
                 if (lastOffset == -1)
                     lastOffset = 0;
 
-                (var deserialized, int consumedBytes) = type.DeserializeUntyped(span.Slice(fixedPartIndex, type.LengthUntyped(default)));
+                (var deserialized, int consumedBytes) = fieldType.DeserializeUntyped(span.Slice(fixedPartIndex, fieldType.LengthUntyped(default!)));
                 totalConsumed += consumedBytes;
-                //lastOffset += consumedBytes;
                 fixedPartIndex += consumedBytes;
                 Schema.Set(ret, i, deserialized);
             }
         }
 
-        for (int i = 0; i < Schema.FieldTypes.Length; i++)
+        for (int i = 0; i < Schema.Fields.Length; i++)
         {
-            var type = Schema.FieldTypes[i];
-            if (type.IsVariableLength())
+            var field = Schema.Fields[i];
+            var fieldType = field.FieldType;
+            if (fieldType.IsVariableLength())
             {
                 var currentOffset = variableOffsets[i];
                 if (contentsStart == -1)
@@ -75,7 +77,7 @@ public class SszContainer<TReturn> : ISszType<TReturn>
                     throw new Exception("Gap in variable parts");
                 }
 
-                (var deserialized, int consumedBytes) = type.DeserializeUntyped(span.Slice((int)currentOffset, nextOffsetLimit - (int)currentOffset));
+                (var deserialized, int consumedBytes) = fieldType.DeserializeUntyped(span.Slice(currentOffset, nextOffsetLimit - currentOffset));
                 totalConsumed += consumedBytes;
                 lastOffset = (int)currentOffset;
                 nextExpectedOffset = (int)currentOffset + consumedBytes;
@@ -90,7 +92,7 @@ public class SszContainer<TReturn> : ISszType<TReturn>
     public int SerializeUntyped(object obj, Span<byte> span) => Serialize((TReturn)obj, span);
     public int Serialize(TReturn t, Span<byte> span)
     {
-        var enumerated = Schema.FieldTypes;
+        var enumerated = Schema.Fields;
         
         var fixedParts = new int[enumerated.Length];
         int consumed = 0;
@@ -98,8 +100,9 @@ public class SszContainer<TReturn> : ISszType<TReturn>
         // First pass, write fixed parts and placeholders for variable offsets
         for (int i = 0; i < enumerated.Length; i++)
         {
-            var type = enumerated[i];
-            if (type.IsVariableLength())
+            var field = enumerated[i];
+            var fieldType = field.FieldType;
+            if (fieldType.IsVariableLength())
             {
                 fixedParts[i] = consumed;
                 consumed += 4;
@@ -107,7 +110,7 @@ public class SszContainer<TReturn> : ISszType<TReturn>
             else
             {
                 fixedParts[i] = consumed;
-                var serializedLength = type.SerializeUntyped(Schema.Get(t, i), span.Slice(consumed));
+                var serializedLength = fieldType.SerializeUntyped(Schema.Get(t, i), span.Slice(consumed));
                 consumed += serializedLength;
             }
         }
@@ -118,11 +121,12 @@ public class SszContainer<TReturn> : ISszType<TReturn>
         // Second pass, serialize and write variable parts
         for (int i = 0; i < enumerated.Length; i++)
         {
-            var type = enumerated[i];
-            if (type.IsVariableLength())
+            var field = enumerated[i];
+            var fieldType = field.FieldType;
+            if (fieldType.IsVariableLength())
             {
                 var variablePartSpan = span.Slice(consumed);
-                var serializedLength = type.SerializeUntyped(Schema.Get(t, i), variablePartSpan);
+                var serializedLength = fieldType.SerializeUntyped(Schema.Get(t, i), variablePartSpan);
                 BitConverter.GetBytes((uint)(consumed)).CopyTo(span.Slice(fixedParts[i], 4));
                 consumed += serializedLength;
             }
@@ -131,9 +135,9 @@ public class SszContainer<TReturn> : ISszType<TReturn>
         return consumed;
     }
     
-    public int Length(TReturn t) => Schema.FieldTypes.Select((fieldType, i) => fieldType.IsVariableLength() ? fieldType.LengthUntyped(Schema.Get(t, i)) : fieldType.LengthUntyped(default)).Sum();
-    public bool IsVariableLength() => Schema.FieldTypes.Any(fieldType => fieldType.IsVariableLength());
-    public long ChunkCount(TReturn t) => Schema.FieldTypes.Length;
+    public int Length(TReturn t) => Schema.Fields.Select((field, i) => field.FieldType.IsVariableLength() ? field.FieldType.LengthUntyped(Schema.Get(t, i)) : field.FieldType.LengthUntyped(default!)).Sum();
+    public bool IsVariableLength() => Schema.Fields.Any(field => field.FieldType.IsVariableLength());
+    public long ChunkCount(TReturn t) => Schema.Fields.Length;
     public int LengthUntyped(object t) => Length((TReturn)t);
     public long ChunkCountUntyped(object t) => ChunkCount((TReturn)t);
 }

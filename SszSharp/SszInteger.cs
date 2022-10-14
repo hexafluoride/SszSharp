@@ -2,6 +2,7 @@ namespace SszSharp;
 
 public class SszInteger : ISszType<SszIntegerWrapper>
 {
+    public Type RepresentativeType => typeof(SszIntegerWrapper);
     public readonly int Bits;
     public readonly int[] AllowedSizes = new[] {8, 16, 32, 64, 128, 256}; 
     

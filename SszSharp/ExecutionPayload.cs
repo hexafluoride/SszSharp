@@ -14,7 +14,7 @@ public class ExecutionPayload
                BlockNumber == other.BlockNumber && GasLimit == other.GasLimit && GasUsed == other.GasUsed &&
                Timestamp == other.Timestamp && ExtraData.SequenceEqual(other.ExtraData) &&
                BaseFeePerGas.Equals(other.BaseFeePerGas) && BlockHash.SequenceEqual(other.BlockHash) &&
-               Transactions.Length == other.Transactions.Length &&
+               Transactions.Count == other.Transactions.Count &&
                Transactions.Zip(other.Transactions).All(p => p.First.SequenceEqual(p.Second));
     }
 
@@ -73,7 +73,7 @@ public class ExecutionPayload
     [SszElement(12, "Vector[uint8, 32]")]
     public byte[] BlockHash { get; set; }
     [SszElement(13, "List[List[uint8, 1073741824], 1048576]")]
-    public byte[][] Transactions { get; set; }
+    public List<byte[]> Transactions { get; set; }
 }
 
 public class ExecutionPayloadHeader

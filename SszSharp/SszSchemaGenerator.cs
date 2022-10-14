@@ -5,7 +5,7 @@ namespace SszSharp;
 
 public static class SszSchemaGenerator
 {
-    public static object Wrap(ISszType sszType, object value)
+    public static object? Wrap(ISszType sszType, object? value)
     {
         if (sszType is SszInteger integerType)
         {
@@ -13,30 +13,23 @@ public static class SszSchemaGenerator
         }
         
         var typeType = sszType.GetType();
-        var typeInterfaces = typeType.GetInterfaces();
 
-        if (typeType.Name.StartsWith("SszVector") || typeType.Name.StartsWith("SszList"))
+        if (sszType is ISszCollection collection)
         {
             if (value is not IEnumerable valueEnumerable)
                 throw new Exception("value not enumerable");
             var enumerableCast = valueEnumerable.Cast<object>();
-            var elementType = (ISszType) typeType
-                .GetField("MemberType")
-                .GetValue(sszType);
-
-            var representativeValueType = elementType.GetType().GetInterfaces()
-                .First(iface => iface.Name.StartsWith("ISszType") && iface.IsGenericType).GenericTypeArguments[0];
+            var elementType = collection.MemberTypeUntyped;
+            var representativeValueType = elementType.RepresentativeType;
+            
             var wrappedEnumerable = enumerableCast.Select(element => Wrap(elementType, element));
-            var wrappedCastEnumerable = typeof(Enumerable).GetMethod("Cast")
-                .MakeGenericMethod(new[] {representativeValueType}).Invoke(null, new object[] { wrappedEnumerable });
-            //var realType = 
-            return wrappedCastEnumerable;
+            return wrappedEnumerable.GetTypedEnumerable(representativeValueType);
         }
 
         return value;
     }
 
-    public static object Unwrap(ISszType sourceType, Type targetType, object value)
+    public static object? Unwrap(ISszType sourceType, Type targetType, object? value)
     {
         if (sourceType is SszInteger integerType)
         {
@@ -66,7 +59,7 @@ public static class SszSchemaGenerator
                     throw new Exception($"{targetType} can not fit {integerWrapper.Bits} bits");
                 }
             }
-
+            
             return Convert.ChangeType(integerWrapper.Value, targetType);
         }
         
@@ -74,14 +67,12 @@ public static class SszSchemaGenerator
         var typeInterfaces = typeType.GetInterfaces();
         var targetTypeInterfaces = targetType.GetInterfaces();
 
-        if (typeType.Name.StartsWith("SszVector") || typeType.Name.StartsWith("SszList"))
+        if (sourceType is ISszCollection collection)
         {
             if (value is not IEnumerable valueEnumerable)
                 throw new Exception("value not enumerable");
             var enumerableCast = valueEnumerable.Cast<object>();
-            var elementType = ((ISszType?) typeType
-                .GetField("MemberType")?
-                .GetValue(sourceType)) ?? throw new Exception();
+            var elementType = collection.MemberTypeUntyped;
             var targetElementType = default(Type);
 
             if (targetType.IsArray)
@@ -102,14 +93,13 @@ public static class SszSchemaGenerator
 
             if (targetType.IsArray)
             {
-                //return unwrappedEnumerable.ToArray();
-                return typeof(Enumerable).GetMethod("ToArray").MakeGenericMethod(new [] { targetElementType }).Invoke(null, new object[] {(typeof(Enumerable).GetMethod("Cast")
-                    .MakeGenericMethod(new[] {targetElementType}).Invoke(null, new object[] { unwrappedEnumerable })) });
+                return typeof(Enumerable).GetMethod("ToArray")!.MakeGenericMethod(new[] {targetElementType}).Invoke(null,
+                    new [] {unwrappedEnumerable.GetTypedEnumerable(targetElementType)});
             }
             else if (targetType == typeof(List<>).MakeGenericType(new [] { targetElementType }))
             {
-                return typeof(Enumerable).GetMethod("ToList").MakeGenericMethod(new [] { targetElementType }).Invoke(null, new object[] {(typeof(Enumerable).GetMethod("Cast")
-                    .MakeGenericMethod(new[] {targetElementType}).Invoke(null, new object[] { unwrappedEnumerable })) });
+                return typeof(Enumerable).GetMethod("ToList")!.MakeGenericMethod(new[] {targetElementType}).Invoke(null,
+                    new [] {unwrappedEnumerable.GetTypedEnumerable(targetElementType)});
             }
             else
             {
@@ -119,30 +109,37 @@ public static class SszSchemaGenerator
         
         return value;
     }
+
+    public static Dictionary<Type, ISszContainerSchema> CachedSchemas = new();
     
     public static SszContainerSchema<T> GetSchema<T>(Func<T> factory)
     {
-        (var fieldTypes, var getters, var setters, var names) = GetSchemaElements<T>();
-        return new SszContainerSchema<T>(fieldTypes, getters, setters, names, factory);
+        if (CachedSchemas.ContainsKey(typeof(T)))
+            return (SszContainerSchema<T>)CachedSchemas[typeof(T)];
+        
+        var schema = new SszContainerSchema<T>(GetSchemaFieldsFromAttributes<T>(), factory);
+        CachedSchemas[typeof(T)] = schema;
+        return schema;
     }
     
     public static SszContainerSchema<T> GetSchemaWithUntypedFactory<T>(Func<object> factory)
     {
-        (var fieldTypes, var getters, var setters, var names) = GetSchemaElements<T>();
-        return new SszContainerSchema<T>(fieldTypes, getters, setters, names, factory);
+        if (CachedSchemas.ContainsKey(typeof(T)))
+            return (SszContainerSchema<T>)CachedSchemas[typeof(T)];
+
+        var schema = new SszContainerSchema<T>(GetSchemaFieldsFromAttributes<T>(), factory);
+        CachedSchemas[typeof(T)] = schema;
+        return schema;
     }
     
-    static (ISszType[], Func<T, object>[], Action<T, object>[], string[]) GetSchemaElements<T>()
+    static ISszContainerField<T>[] GetSchemaFieldsFromAttributes<T>()
     {
         var containerType = typeof(T);
         var typeProperties = containerType.GetProperties();
         var sszFieldCount =
             typeProperties.Count(prop => prop.GetCustomAttributes(typeof(SszElementAttribute), true).Any());
-        
-        var fieldTypes = new ISszType[sszFieldCount];
-        var getters = new Func<T, object>[sszFieldCount];
-        var setters = new Action<T, object>[sszFieldCount];
-        var names = new string[sszFieldCount];
+
+        var fields = new ISszContainerField<T>[sszFieldCount];
 
         foreach (var property in typeProperties)
         {
@@ -152,14 +149,20 @@ public static class SszSchemaGenerator
 
             var elementAttribute = elementAttributes.OfType<SszElementAttribute>().Single();
             var index = elementAttribute.Index;
-            var type = SszElementAttribute.ConstructType(elementAttribute.TypeDescriptor, property.PropertyType);
+            var type = SszElementAttribute.ConstructType(elementAttribute.TypeDescriptor, property.PropertyType) ??
+                       throw new Exception(
+                           $"Failed to construct type for property {property.Name} in type {containerType}");
 
-            fieldTypes[index] = type;
-            getters[index] = (p) => Wrap(type, property.GetValue(p));
-            setters[index] = (t, p) => property.SetValue(t, Unwrap(type, property.PropertyType, p));
-            names[index] = property.Name;
+            var field = new SszContainerField<T>(
+                fieldType: type,
+                getter: (p) => Wrap(type, property.GetValue(p)),
+                setter: (t, p) => property.SetValue(t, Unwrap(type, property.PropertyType, p)),
+                name: property.Name
+            );
+
+            fields[index] = field;
         }
 
-        return (fieldTypes, getters, setters, names);
+        return fields;
     }
 }

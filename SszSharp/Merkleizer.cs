@@ -112,9 +112,6 @@ public static class Merkleizer
 
         var chunkCount = chunksEnumerated.Count;
         var padTarget = limit == -1 ? NextPowerOfTwo(chunksEnumerated.Count) : NextPowerOfTwo(limit);
-
-        //chunksEnumerated.AddRange(Enumerable.Repeat<byte[]?>(new byte[32], padTarget - chunksEnumerated.Count));
-
         var layerCount = padTarget == 1 ? 0 : (int)(Math.Floor(Math.Log2(padTarget - 1)) + 1);
         
         if (chunksEnumerated.Count == 0)
@@ -159,7 +156,7 @@ public static class Merkleizer
 
         if (isVector)
         {
-            var elementType = type.GetElementType();
+            var elementType = (type as ISszCollection)!.MemberTypeUntyped;
             if (elementType.IsBasicType())
             {
                 return Merkleize(Pack(elementType, value.GetGenericEnumerable()));
@@ -172,7 +169,7 @@ public static class Merkleizer
 
         if (isList)
         {
-            var elementType = type.GetElementType();
+            var elementType = (type as ISszCollection)!.MemberTypeUntyped;
             var enumerated = value.GetGenericEnumerable().ToList();
             if (elementType.IsBasicType())
             {
@@ -190,8 +187,8 @@ public static class Merkleizer
         if (isContainer)
         {
             var schema = type.GetSchema();
-            return Merkleize(schema.FieldTypes.Select((t, i) =>
-                HashTreeRoot(t, schema.GetUntyped(value, i))));
+            return Merkleize(schema.FieldsUntyped.Select((field, i) =>
+                HashTreeRoot(field.FieldType, field.GetUntyped(value))));
         }
 
         if (type is SszBitvector)
@@ -248,14 +245,14 @@ public static class Merkleizer
     public static bool IsVector(this ISszType type) => (type.GetType().IsGenericType && type.GetType().GetGenericTypeDefinition() == typeof(SszVector<,>));
     public static bool IsContainer(this ISszType type) => (type.GetType().IsGenericType && type.GetType().GetGenericTypeDefinition() == typeof(SszContainer<>));
     public static bool IsUnion(this ISszType type) => type is SszUnion;
-    public static ISszType GetElementType(this ISszType type) => (ISszType)(type.GetType().GetField("MemberType")!.GetValue(type)!);
 
     public static ISszContainerSchema GetSchema(this ISszType type) =>
         (ISszContainerSchema) (type.GetType().GetField("Schema")!.GetValue(type)!);
-    public static ISszType GetFieldType(this ISszType type, int index) => GetSchema(type).FieldTypes[index];
 
     public static IEnumerable<object> GetGenericEnumerable(this object o) => GetTypedEnumerable<object>(o);
     public static IEnumerable<T> GetTypedEnumerable<T>(this object o) => (IEnumerable<T>)(typeof(Enumerable).GetMethod("Cast")!.MakeGenericMethod(new[] {typeof(T)}).Invoke(null, new object[] { o })!);
+    public static object GetTypedEnumerable(this object o, Type t) => (typeof(Enumerable).GetMethod("Cast")!.MakeGenericMethod(new[] {t}).Invoke(null, new object[] { o })!);
+    //public static object UntypedEnumerableToArray(this object o, Type t) => 
     public static int MerkleItemLength(this ISszType type) => type.IsBasicType() ? type.LengthUntyped(default!) : 32;
 
     public static (int, int, int) GetItemPosition(ISszType type, int index)
@@ -268,9 +265,9 @@ public static class Merkleizer
         }
 
         var deconstructedType = typeType.GetGenericTypeDefinition();
-        if (deconstructedType == typeof(SszVector<,>) || deconstructedType == typeof(SszList<,>))
+        if (type is ISszCollection collection)
         {
-            var elementType = (ISszType)(typeType.GetField("MemberType")!.GetValue(type)!);
+            var elementType = collection.MemberTypeUntyped;
             var length = elementType.MerkleItemLength();
             var start = index * length;
             return (start / SszConstants.BytesPerChunk, start % SszConstants.BytesPerChunk, (start % SszConstants.BytesPerChunk) + length);
@@ -279,7 +276,7 @@ public static class Merkleizer
         if (deconstructedType == typeof(SszContainer<>))
         {
             var schema = (ISszContainerSchema) (typeType.GetField("Schema")!.GetValue(type)!);
-            var fieldType = schema.FieldTypes[index];
+            var fieldType = schema.FieldsUntyped[index].FieldType;
             var length = fieldType.MerkleItemLength();
             return (index, 0, length);
         }
@@ -315,7 +312,7 @@ public static class Merkleizer
 
                 ISszType? elementType = (ISszType?)(typeIsListOrVector
                     ? (type.GetType().GetField("MemberType")!.GetValue(type))
-                    : ((ISszContainerSchema?) type.GetType().GetField("Schema")?.GetValue(type))?.FieldTypes[hop]);
+                    : ((ISszContainerSchema?) type.GetType().GetField("Schema")?.GetValue(type))?.FieldsUntyped[hop].FieldType);
                 
                 type = elementType ?? throw new Exception("Could not resolve element type");
                 typeIsListOrVector = type.IsList() || type.IsVector();
@@ -397,6 +394,9 @@ public static class Merkleizer
 
     public static int Hash(Span<byte> output, byte[] left, byte[] right)
     {
-        return SHA256.HashData(left.Concat(right).ToArray(), output);
+        Span<byte> catted = stackalloc byte[64];
+        left.CopyTo(catted);
+        right.CopyTo(catted.Slice(32));
+        return SHA256.HashData(catted, output);
     }
 }

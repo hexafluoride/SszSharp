@@ -3,6 +3,7 @@ namespace SszSharp;
 public class SszBitvector : ISszType<IEnumerable<bool>>
 {
     public readonly long Count;
+    public Type RepresentativeType => typeof(IEnumerable<bool>);
 
     public SszBitvector(long count)
     {

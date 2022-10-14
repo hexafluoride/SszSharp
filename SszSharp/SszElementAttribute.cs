@@ -109,10 +109,10 @@ public class SszElementAttribute : Attribute
                     memberRepresentativeType = parameterType.GetElementType();
                 }
                 else if (parameterType.GetInterfaces()
-                         .Any(iface => iface.Name.StartsWith("System.Collections.Generic.IList")))
+                         .Any(iface => iface.FullName.StartsWith("System.Collections.Generic.IList")))
                 {
                     memberRepresentativeType = parameterType.GetInterfaces()
-                        .First(iface => iface.Name.StartsWith("System.Collections.Generic.IList")).GetElementType();
+                        .First(iface => iface.FullName.StartsWith("System.Collections.Generic.IList")).GenericTypeArguments[0];
                 }
                 
                 var memberType = ConstructType(typeSpec, memberRepresentativeType);
@@ -137,10 +137,10 @@ public class SszElementAttribute : Attribute
                     memberRepresentativeType = parameterType.GetElementType();
                 }
                 else if (parameterType.GetInterfaces()
-                         .Any(iface => iface.Name.StartsWith("System.Collections.Generic.IList")))
+                         .Any(iface => iface.FullName.StartsWith("System.Collections.Generic.IList")))
                 {
                     memberRepresentativeType = parameterType.GetInterfaces()
-                        .First(iface => iface.Name.StartsWith("System.Collections.Generic.IList")).GetElementType();
+                        .First(iface => iface.FullName.StartsWith("System.Collections.Generic.IList")).GenericTypeArguments[0];
                 }
                 
                 var memberType = ConstructType(typeSpec, memberRepresentativeType);
