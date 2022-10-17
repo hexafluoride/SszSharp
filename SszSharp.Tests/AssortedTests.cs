@@ -89,122 +89,6 @@ public class AssortedTests
     }
 
     [Fact]
-    public void ContainerTest()
-    {
-        var executionPayloadType = new SszContainer<ExecutionPayload>(SizePreset.MinimalPreset);
-        var payload = new ExecutionPayload()
-        {
-            Root = GenerateRandomBytes(32),
-            BaseFeePerGas = 1000,
-            BlockHash = GenerateRandomBytes(32),
-            BlockNumber = 1003000,
-            ExtraData = GenerateRandomBytes(32),
-            FeeRecipient = GenerateRandomBytes(20),
-            GasLimit = 10000000,
-            GasUsed = 5555,
-            LogsBloom = GenerateRandomBytes(256),
-            PrevRandao = GenerateRandomBytes(32),
-            Timestamp = 193484832,
-            ReceiptsRoot = GenerateRandomBytes(32),
-            StateRoot = GenerateRandomBytes(32),
-            Transactions = new()
-            {
-                GenerateRandomBytes(100),
-                GenerateRandomBytes(200),
-                GenerateRandomBytes(10),
-            }
-        };
-        
-        TestRoundtrip(executionPayloadType, payload);
-    }
-
-    byte[] GenerateRandomBytes(int len)
-    {
-        var arr = new byte[len];
-        Random.Shared.NextBytes(arr);
-        return arr;
-    }
-
-    [Fact]
-    public void ExecutionPayloadDeserialize()
-    {
-        var bytesStr =
-            "0000000000bb0000000000000000000000000000000000000000000000000000000000000000cc0000000000000000000000000000000000000000000dd00000000000000000000000000000000000000000000000000000000000ee0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000ff000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000110000000000000000000000000000000000000000000000000d204000000000000d8100000000000005704000000000000faaa19cc00000000fc010000672b0000000000000000000000000000000000000000000000000000000000000000fffff0000000000000000000000000000000000000000000000000000000fc010000";
-        var bytes = new byte[bytesStr.Length / 2];
-
-        for (int i = 0; i < bytesStr.Length; i += 2)
-        {
-            bytes[i / 2] = byte.Parse(bytesStr.Substring(i, 2), NumberStyles.HexNumber);
-        }
-        
-        (var deserializedPayload, var consumed) = SszContainer.Deserialize<ExecutionPayload>(bytes, SizePreset.MainnetPreset);
-        Debugger.Break();
-    }
-
-    [Fact]
-    public void BeaconStateTest1()
-    {
-        var beaconState = new BeaconState()
-        {
-            BlockRoots = Enumerable.Repeat(1, 64).Select(_ => GenerateRandomBytes(32)).ToArray(),
-            StateRoots = Enumerable.Repeat(1, 64).Select(_ => GenerateRandomBytes(32)).ToArray(),
-            Eth1Data = new Eth1Data()
-            {
-                BlockHash = GenerateRandomBytes(32),
-                DepositCount = 10,
-                DepositRoot = GenerateRandomBytes(32)
-            },
-            Eth1DataVotes = new List<Eth1Data>(),
-            Fork = new Fork()
-            {
-                CurrentVersion = GenerateRandomBytes(4),
-                PreviousVersion = GenerateRandomBytes(4),
-                Epoch = 10
-            },
-            GenesisTime = 10000,
-            GenesisValidatorsRoot = GenerateRandomBytes(32),
-            HistoricalRoots = Enumerable.Repeat(1, 10).Select(_ => GenerateRandomBytes(32)).ToArray(),
-            LatestBlockHeader = new BeaconBlockHeader()
-            {
-                BodyRoot = GenerateRandomBytes(32),
-                ParentRoot = GenerateRandomBytes(32),
-                Slot = 20,
-                StateRoot = GenerateRandomBytes(32),
-                ValidatorIndex = 10
-            },
-            Slot = 20
-        };
-    }
-
-    [Fact]
-    public void BeaconStateTest2()
-    {
-        var beaconStateBytes = File.ReadAllBytes("TestData/genesis.ssz");
-        var beaconStateType = SszContainer.GetContainer<BeaconState>(SizePreset.MinimalPreset);
-        (var beaconState, var consumed) = beaconStateType.Deserialize(beaconStateBytes);
-        
-        //Debugger.Break();
-        var buf = new byte[consumed];
-        var reserialized = beaconStateType.Serialize(beaconState, new Span<byte>(buf));
-        
-        Assert.Equal(buf, beaconStateBytes);
-
-        var sw = Stopwatch.StartNew();
-        var root = beaconStateType.HashTreeRoot(beaconState);
-        
-        _testOutputHelper.WriteLine(ToPrettyString(root));
-        _testOutputHelper.WriteLine(sw.ElapsedMilliseconds.ToString());
-
-        var schema = beaconStateType.Schema;
-
-        for (int i = 0; i < schema.Fields.Length; i++)
-        {
-            var field = schema.Fields[i];
-            _testOutputHelper.WriteLine($"{field.Name}: {ToPrettyString(Merkleizer.HashTreeRoot(field.FieldType, schema.Get(beaconState, i)))}");
-        }
-    }
-
-    [Fact]
     public void ValidatorsTest()
     {
         var bytes = File.ReadAllBytes("TestData/Validators.ssz");
@@ -223,74 +107,48 @@ public class AssortedTests
         var i = 0;
         foreach (var validator in deserialized)
         {
-            
             _testOutputHelper.WriteLine(i++ + ": " + ToPrettyString(Merkleizer.HashTreeRoot(validatorType, validator)));
         }
     }
-    [Fact]
-    public void ValidatorTest()
-    {
-        var bytes = File.ReadAllBytes("TestData/ValidatorNodeStruct.ssz");
-        var type = SszContainer.GetContainer<ValidatorNodeStruct>(SizePreset.MainnetPreset);
-        (var deserialized, var consumed) = type.Deserialize(bytes);
-        var buf = new byte[consumed];
-        var span = new Span<byte>(buf);
-        var reserializedCount = type.Serialize(deserialized, span);
-        
-        Assert.Equal(buf, bytes);
-        
-        _testOutputHelper.WriteLine(ToPrettyString(Merkleizer.HashTreeRoot(type, deserialized)));
-    }
     
     [Fact]
-    public void ExecutionPayloadHeaderTest()
-    {
-        var beaconStateBytes = File.ReadAllBytes("TestData/ExecutionPayloadHeader.ssz");
-        var type = SszContainer.GetContainer<ExecutionPayloadHeader>(SizePreset.MainnetPreset);
-        (var beaconState, var consumed) = type.Deserialize(beaconStateBytes);
-        
-        //Debugger.Break();
-        var buf = new byte[consumed];
-        var reserialized = type.Serialize(beaconState, new Span<byte>(buf));
-        
-        Assert.Equal(buf, beaconStateBytes);
-
-        var root = Merkleizer.HashTreeRoot(type, beaconState);
-        PrintBytes(new Span<byte>(root), root.Length);
-    }
+    public void BeaconStateMinimalTest() =>
+        TestRoundtripContainer<BeaconState>("TestData/genesis.ssz", SizePreset.MinimalPreset);
     [Fact]
-    public void SyncCommiteeTest()
-    {
-        var beaconStateBytes = File.ReadAllBytes("TestData/SyncCommittee.ssz");
-        var type = SszContainer.GetContainer<SyncCommittee>(SizePreset.MainnetPreset);
-        (var beaconState, var consumed) = type.Deserialize(beaconStateBytes);
-        
-        //Debugger.Break();
-        var buf = new byte[consumed];
-        var reserialized = type.Serialize(beaconState, new Span<byte>(buf));
-        
-        Assert.Equal(buf, beaconStateBytes);
-
-        var root = Merkleizer.HashTreeRoot(type, beaconState);
-        PrintBytes(new Span<byte>(root), root.Length);
-    }
+    public void BeaconStateMainnetTest() =>
+        TestRoundtripContainer<BeaconState>("TestData/BeaconState.ssz", SizePreset.MainnetPreset);
     [Fact]
-    public void ExecutionPayloadTest()
+    public void ValidatorNodeStructTest() =>
+        TestRoundtripContainer<ValidatorNodeStruct>("TestData/ValidatorNodeStruct.ssz", SizePreset.MainnetPreset);
+    [Fact]
+    public void ExecutionPayloadTest() =>
+        TestRoundtripContainer<ExecutionPayload>("TestData/ExecutionPayload.ssz", SizePreset.MainnetPreset);
+    [Fact]
+    public void ExecutionPayloadHeaderTest() =>
+        TestRoundtripContainer<ExecutionPayloadHeader>("TestData/ExecutionPayloadHeader.ssz", SizePreset.MainnetPreset);
+    [Fact]
+    public void SyncCommiteeTest() =>
+        TestRoundtripContainer<SyncCommittee>("TestData/SyncCommittee.ssz", SizePreset.MainnetPreset);
+
+    void TestRoundtripContainer<TContainer>(string filename, SizePreset? preset) =>
+        TestRoundtripContainer<TContainer>(File.ReadAllBytes(filename), preset);
+    void TestRoundtripContainer<TContainer>(byte[] bytes, SizePreset? preset)
     {
-        var beaconStateBytes = File.ReadAllBytes("TestData/ExecutionPayload.ssz");
-        var type = SszContainer.GetContainer<ExecutionPayload>(SizePreset.MainnetPreset);
-        (var beaconState, var consumed) = type.Deserialize(beaconStateBytes);
+        var containerType = SszContainer.GetContainer<TContainer>(preset);
+        (TContainer deserialized, var consumedBytes) = containerType.Deserialize(bytes);
         
-        //Debugger.Break();
-        var buf = new byte[consumed];
-        var reserialized = type.Serialize(beaconState, new Span<byte>(buf));
+        Assert.Equal(bytes.Length, consumedBytes);
         
-        Assert.Equal(buf, beaconStateBytes);
-
-        var root = Merkleizer.HashTreeRoot(type, beaconState);
-        PrintBytes(new Span<byte>(root), root.Length);
+        var buf = new byte[consumedBytes];
+        var reserializedBytes = containerType.Serialize(deserialized, buf);
+        (var deserializedAgain, var deserializedBytes) = containerType.Deserialize(buf); 
+        
+        Assert.Equal(reserializedBytes, consumedBytes);
+        Assert.Equal(reserializedBytes, deserializedBytes);
+        Assert.Equal(bytes, buf);
+        Assert.True(RecursiveEqualityCheck(containerType, deserialized, deserializedAgain));
     }
-
+    
     void TestRoundtrip<T>(ISszType<T> sszType, T value, int bufSize = 65536)
     {
         var buf = new byte[bufSize];
@@ -300,43 +158,71 @@ public class AssortedTests
         
         PrintBytes(span.Slice(0, writtenBytes));
         Assert.Equal(writtenBytes, consumedBytes);
-        Assert.True(RecursiveEqualityCheck(deserialized, value));
+        Assert.True(RecursiveEqualityCheck(sszType, deserialized, value));
     }
 
-    string ToPrettyString(byte[] arr)
+    bool ContainerEqualityCheck(ISszType type, object a, object b)
     {
-        return BitConverter.ToString(arr).Replace("-", "").ToLower();
+        if (!type.IsContainer())
+            return false;
+        
+        var representativeType = type.RepresentativeType;
+        var aType = a.GetType();
+        var bType = b.GetType();
+
+        if (aType != representativeType || bType != representativeType)
+            return false;
+
+        var schema = type.GetSchema();
+        var fields = schema.FieldsUntyped;
+
+        for (int i = 0; i < fields.Length; i++)
+        {
+            var field = fields[i];
+            var aValue = schema.GetUntyped(a, i);
+            var bValue = schema.GetUntyped(b, i);
+
+            if (!RecursiveEqualityCheck(field.FieldType, aValue, bValue))
+                return false;
+        }
+
+        return true;
     }
     
-    bool RecursiveEqualityCheck(object a, object b)
+    bool RecursiveEqualityCheck(ISszType type, object a, object b)
     {
-        var aInterfaces = a.GetType().GetInterfaces();
-        var bInterfaces = b.GetType().GetInterfaces();
-
-        var aEnumerableInterface = aInterfaces.FirstOrDefault(iface => iface.FullName.StartsWith("System.Collections.Generic.IEnumerable"));
-        var bEnumerableInterface = bInterfaces.FirstOrDefault(iface => iface.FullName.StartsWith("System.Collections.Generic.IEnumerable"));
-
-        if (aEnumerableInterface is not null && bEnumerableInterface is not null)
+        if (type.IsContainer())
         {
-            var aArray = (Array) (typeof(Enumerable).GetMethods().Where(m => m.Name == "ToArray").First()
-                .MakeGenericMethod(aEnumerableInterface.GenericTypeArguments[0]).Invoke(null, new[] {a}));
-            var bArray = (Array) (typeof(Enumerable).GetMethods().Where(m => m.Name == "ToArray").First()
-                .MakeGenericMethod(bEnumerableInterface.GenericTypeArguments[0]).Invoke(null, new[] {b}));
+            return ContainerEqualityCheck(type, a, b);
+        }
+        
+        if (type is ISszCollection || type is SszBitvector || type is SszBitlist)
+        {
+            var aArray = a.GetGenericEnumerable().ToArray();
+            var bArray = b.GetGenericEnumerable().ToArray();
+            
+            var collectionMemberType = type switch
+            {
+                ISszCollection collectionType => collectionType.MemberTypeUntyped,
+                SszBitvector => new SszBoolean(),
+                SszBitlist => new SszBoolean(),
+                _ => throw new Exception("Could not obtain member type")
+            };
 
             if (aArray.Length != bArray.Length)
             {
                 return false;
             }
-            
+
             for (int i = 0; i < aArray.Length; i++)
             {
-                if (!RecursiveEqualityCheck(aArray.GetValue(i), bArray.GetValue(i)))
+                if (!RecursiveEqualityCheck(collectionMemberType, aArray[i], bArray[i]))
                     return false;
             }
 
             return true;
         }
-
+        
         return a.Equals(b);
     }
 
@@ -350,5 +236,17 @@ public class AssortedTests
             var range = buf.Slice(i, Math.Min(16, length - i));
             _testOutputHelper.WriteLine(string.Join(' ', range.ToArray().Select(b => $"{b:X2}")));
         }
+    }
+    
+    string ToPrettyString(byte[] arr)
+    {
+        return BitConverter.ToString(arr).Replace("-", "").ToLower();
+    }
+    
+    byte[] GenerateRandomBytes(int len)
+    {
+        var arr = new byte[len];
+        Random.Shared.NextBytes(arr);
+        return arr;
     }
 }

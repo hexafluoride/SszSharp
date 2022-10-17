@@ -1,6 +1,7 @@
 using System.Collections;
 using System.Numerics;
 using System.Reflection;
+using System.Text;
 
 namespace SszSharp;
 
@@ -10,6 +11,18 @@ public static class SszSchemaGenerator
     {
         if (sszType is SszInteger integerType)
         {
+            if (value.GetType().IsEnum)
+            {
+                switch (integerType.Bits)
+                {
+                    case 8:
+                        value = Convert.ToByte(value);
+                        break;
+                    default:
+                        throw new Exception("Non-uint8 enums are not supported");
+                }
+            }
+            
             return new SszIntegerWrapper(integerType.Bits, value);
         }
         
@@ -17,11 +30,29 @@ public static class SszSchemaGenerator
 
         if (sszType is ISszCollection collection)
         {
-            if (value is not IEnumerable valueEnumerable)
-                throw new Exception("value not enumerable");
-            var enumerableCast = valueEnumerable.Cast<object>();
             var elementType = collection.MemberTypeUntyped;
             var representativeValueType = elementType.RepresentativeType;
+            IEnumerable? valueEnumerable;
+            
+            if (value is string valueString && elementType is SszInteger integerElement)
+            {
+                if (integerElement.Bits != 8)
+                {
+                    throw new Exception($"Strings must be backed by uint8 collection, found uint{integerElement.Bits}");
+                }
+
+                valueEnumerable = Encoding.UTF8.GetBytes(valueString);
+            }
+            else if (value is not IEnumerable)
+            {
+                throw new Exception("Value not enumerable");
+            }
+            else
+            {
+                valueEnumerable = value as IEnumerable;
+            }
+
+            var enumerableCast = valueEnumerable.Cast<object>();
             
             var wrappedEnumerable = enumerableCast.Select(element => Wrap(elementType, element));
             return wrappedEnumerable.GetTypedEnumerable(representativeValueType);
@@ -60,6 +91,11 @@ public static class SszSchemaGenerator
                     throw new Exception($"{targetType} can not fit {integerWrapper.Bits} bits");
                 }
             }
+
+            if (targetType.IsEnum)
+            {
+                return Enum.ToObject(targetType, integerWrapper.Value);
+            }
             
             return Convert.ChangeType(integerWrapper.Value, targetType);
         }
@@ -76,7 +112,21 @@ public static class SszSchemaGenerator
             var elementType = collection.MemberTypeUntyped;
             var targetElementType = default(Type);
 
-            if (targetType.IsArray)
+            if (targetType == typeof(string))
+            {
+                if (elementType is SszInteger integerElement)
+                {
+                    if (integerElement.Bits != 8)
+                    {
+                        throw new Exception(
+                            $"Strings must be backed by uint8 collection, found uint{integerElement.Bits}");
+                    }
+
+                    return Encoding.UTF8.GetString(enumerableCast
+                        .Select(element => (byte) ((SszIntegerWrapper) element).Value).ToArray());
+                }
+            }
+            else if (targetType.IsArray)
             {
                 targetElementType = targetType.GetElementType() ?? throw new Exception("Could not derive element type of array");
             }

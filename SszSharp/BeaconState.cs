@@ -18,7 +18,6 @@ public class BeaconBlockHeader
 
 public class Eth1Data
 {
-    
     [SszElement(0, "Vector[uint8, 32]")] public byte[] DepositRoot { get; set; }
     [SszElement(1, "uint64")] public ulong DepositCount { get; set; }
     [SszElement(2, "Vector[uint8, 32]")] public byte[] BlockHash { get; set; }

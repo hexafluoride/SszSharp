@@ -2,7 +2,6 @@ namespace SszSharp;
 
 public static class SszContainer
 {
-    
     // static convenience method
     private static Dictionary<(Type, SizePreset), ISszType> CachedContainers = new();
 
@@ -24,6 +23,19 @@ public static class SszContainer
         GetContainer<T>(preset).Deserialize(span);
     public static int Serialize<T>(T t, Span<byte> span, SizePreset? preset = null) =>
         GetContainer<T>(preset).Serialize(t, span);
+
+    public static byte[] Serialize<T>(T t, SizePreset? preset = null)
+    {
+        var container = GetContainer<T>();
+        var length = container.Length(t);
+        var buffer = new byte[length];
+        var written = container.Serialize(t, buffer.AsSpan());
+
+        if (written != length)
+            throw new Exception($"Was expecting to serialize to {length} bytes, did {written} instead");
+        
+        return buffer;
+    }
     public static byte[] HashTreeRoot<T>(T t, SizePreset? preset = null) =>
         Merkleizer.HashTreeRoot(GetContainer<T>(preset), t);
 }
@@ -171,7 +183,7 @@ public class SszContainer<TReturn> : ISszType<TReturn>
         return consumed;
     }
     
-    public int Length(TReturn t) => Schema.Fields.Select((field, i) => field.FieldType.IsVariableLength() ? field.FieldType.LengthUntyped(Schema.Get(t, i)) : field.FieldType.LengthUntyped(default!)).Sum();
+    public int Length(TReturn t) => Schema.Fields.Select((field, i) => field.FieldType.IsVariableLength() ? 4 + field.FieldType.LengthUntyped(Schema.Get(t, i)) : field.FieldType.LengthUntyped(default!)).Sum();
     public bool IsVariableLength() => Schema.Fields.Any(field => field.FieldType.IsVariableLength());
     public long ChunkCount(TReturn t) => Schema.Fields.Length;
     public int LengthUntyped(object t) => Length((TReturn)t);

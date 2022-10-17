@@ -1,6 +1,7 @@
-namespace SszSharp;
+[assembly: System.Runtime.CompilerServices.InternalsVisibleTo("SszSharp.Tests")]
 
-static class ReflectionHelpers
+namespace SszSharp;
+internal static class ReflectionHelpers
 {
     public static bool IsBasicType(this ISszType type) => type is SszBoolean || type is SszInteger;
     public static bool IsList(this ISszType type) => (type.GetType().IsGenericType && type.GetType().GetGenericTypeDefinition() == typeof(SszList<,>));
@@ -27,6 +28,10 @@ static class ReflectionHelpers
         {
             memberRepresentativeType = type.GetInterfaces()
                 .First(iface => iface.FullName?.StartsWith("System.Collections.Generic.IList") ?? false).GenericTypeArguments[0];
+        }
+        else if (type == typeof(string))
+        {
+            return typeof(byte);
         }
 
         return memberRepresentativeType;
