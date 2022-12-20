@@ -4,6 +4,7 @@ namespace SszSharp;
 internal static class ReflectionHelpers
 {
     public static bool IsBasicType(this ISszType type) => type is SszBoolean || type is SszInteger;
+    public static bool IsCollection(this ISszType type) => (type.GetType().IsGenericType && type.GetType().GetGenericTypeDefinition() == typeof(ISszCollection<,>));
     public static bool IsList(this ISszType type) => (type.GetType().IsGenericType && type.GetType().GetGenericTypeDefinition() == typeof(SszList<,>));
     public static bool IsVector(this ISszType type) => (type.GetType().IsGenericType && type.GetType().GetGenericTypeDefinition() == typeof(SszVector<,>));
     public static bool IsContainer(this ISszType type) => (type.GetType().IsGenericType && type.GetType().GetGenericTypeDefinition() == typeof(SszContainer<>));

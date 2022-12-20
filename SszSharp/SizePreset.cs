@@ -41,7 +41,15 @@ public class SizePreset
         {"EPOCHS_PER_SLASHINGS_VECTOR", 8192},
         {"ETH1_VOTE_DATA_LIMIT", 64 * 32},
         {"JUSTIFICATION_BITS_LENGTH", 4},
-        {"SLOTS_PER_HISTORICAL_ROOT", 8192}
+        {"SLOTS_PER_HISTORICAL_ROOT", 8192},
+        
+        {"MAX_PROPOSER_SLASHINGS", 16},
+        {"MAX_ATTESTER_SLASHINGS", 2},
+        {"MAX_ATTESTATIONS", 128},
+        {"MAX_DEPOSITS", 16},
+        {"MAX_VOLUNTARY_EXITS", 16},
+        {"MAX_VALIDATORS_PER_COMMITTEE", 2048},
+        {"DEPOSIT_PROOF_LENGTH", 33}
     });
 
     public static SizePreset MinimalPreset = new(new()
@@ -58,7 +66,15 @@ public class SizePreset
         {"EPOCHS_PER_SLASHINGS_VECTOR", 64},
         {"ETH1_VOTE_DATA_LIMIT", 32},
         {"JUSTIFICATION_BITS_LENGTH", 4},
-        {"SLOTS_PER_HISTORICAL_ROOT", 64}
+        {"SLOTS_PER_HISTORICAL_ROOT", 64},
+        
+        {"MAX_PROPOSER_SLASHINGS", 16},
+        {"MAX_ATTESTER_SLASHINGS", 2},
+        {"MAX_ATTESTATIONS", 128},
+        {"MAX_DEPOSITS", 16},
+        {"MAX_VOLUNTARY_EXITS", 16},
+        {"MAX_VALIDATORS_PER_COMMITTEE", 2048},
+        {"DEPOSIT_PROOF_LENGTH", 33},
     });
 
     public static SizePreset Empty = new(new ());

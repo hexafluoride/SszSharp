@@ -263,7 +263,8 @@ public static class Merkleizer
     {
         var pathEnumerated = path.ToList();
         var root = 1L;
-        bool typeIsListOrVector = type.IsList() || type.IsVector();
+        bool typeIsList = type.IsList() || type is SszBitlist;
+        bool typeIsListOrVector = typeIsList || type.IsVector();
 
         foreach (var hop in pathEnumerated)
         {
@@ -276,21 +277,23 @@ public static class Merkleizer
                 if (!typeIsListOrVector)
                     throw new Exception("Cannot get length of non-list/vector type");
                 type = new SszInteger(64);
+                typeIsList = false;
                 typeIsListOrVector = false;
                 root = root * 2 + 1;
             }
             else
             {
                 (var position, _, _) = GetItemPosition(type, hop);
-                var baseIndex = typeIsListOrVector ? 2 : 1;
-                root = root * baseIndex * NextPowerOfTwo(type.ChunkCountUntyped(default!)) + position;
-
-                ISszType? elementType = (ISszType?)(typeIsListOrVector
-                    ? (type.GetType().GetField("MemberType")!.GetValue(type))
-                    : ((ISszContainerSchema?) type.GetType().GetField("Schema")?.GetValue(type))?.FieldsUntyped[hop].FieldType);
+                var baseIndex = typeIsList ? 2 : 1;
+                root = (root * baseIndex * NextPowerOfTwo(type.ChunkCountUntyped(default!))) + position;
+                
+                ISszType? elementType = typeIsListOrVector
+                    ? (type as ISszCollection)?.MemberTypeUntyped
+                    : ((ISszContainerSchema?) type.GetType().GetField("Schema")?.GetValue(type))?.FieldsUntyped[hop].FieldType;
                 
                 type = elementType ?? throw new Exception("Could not resolve element type");
-                typeIsListOrVector = type.IsList() || type.IsVector();
+                typeIsList = type.IsList() || type is SszBitlist;
+                typeIsListOrVector = typeIsList || type.IsVector();
             }
         }
 
