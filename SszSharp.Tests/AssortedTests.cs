@@ -110,6 +110,16 @@ public class AssortedTests
             _testOutputHelper.WriteLine(i++ + ": " + ToPrettyString(Merkleizer.HashTreeRoot(validatorType, validator)));
         }
     }
+
+    [Fact]
+    public void BeaconStateMinimalStateRootProofTest() =>
+        TestProof<BeaconState>("TestData/genesis.ssz", SizePreset.MinimalPreset, 4, 3);
+    [Fact]
+    public void BeaconStateMainnetStateRootProofTest() =>
+        TestProof<BeaconState>("TestData/BeaconState.ssz", SizePreset.MainnetPreset, 4, 3);
+    [Fact]
+    public void BeaconStateMainnetBlockHashProofTest() =>
+        TestProof<BeaconState>("TestData/BeaconState.ssz", SizePreset.MainnetPreset, 24, 12);
     
     [Fact]
     public void BeaconStateMinimalTest() =>
@@ -130,6 +140,32 @@ public class AssortedTests
     public void SyncCommiteeTest() =>
         TestRoundtripContainer<SyncCommittee>("TestData/SyncCommittee.ssz", SizePreset.MainnetPreset);
 
+    void TestProof<TContainer>(string filename, SizePreset? preset, params int[] path) =>
+        TestProof<TContainer>(File.ReadAllBytes(filename), preset, path);
+    void TestProof<TContainer>(byte[] bytes, SizePreset? preset, params int[] path)
+    {
+        var containerType = SszContainer.GetContainer<TContainer>(preset);
+        (TContainer deserialized, var consumedBytes) = containerType.Deserialize(bytes);
+        
+        Assert.NotNull(deserialized);
+        Assert.Equal(bytes.Length, consumedBytes);
+
+        var elementIndex = Merkleizer.GetGeneralizedIndex(containerType, path);
+        var helperPath = Merkleizer.GetHelperIndices(elementIndex).ToList();
+        
+        // Add the element's own index to get its leaf value
+        helperPath.Add(elementIndex);
+
+        var chunks = Merkleizer.GetChunks(containerType, deserialized!, helperPath).ToList();
+        var elementChunk = chunks.Last();
+        chunks.RemoveAt(chunks.Count - 1);
+
+        var originalRoot = Merkleizer.HashTreeRoot(containerType, deserialized!);
+        var reconstitutedRoot = Merkleizer.CalculateMerkleRoot(elementChunk, chunks.ToArray(), elementIndex);
+        
+        Assert.Equal(originalRoot, reconstitutedRoot);
+    }
+    
     void TestRoundtripContainer<TContainer>(string filename, SizePreset? preset) =>
         TestRoundtripContainer<TContainer>(File.ReadAllBytes(filename), preset);
     void TestRoundtripContainer<TContainer>(byte[] bytes, SizePreset? preset)
