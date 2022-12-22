@@ -104,6 +104,18 @@ public static class SszSchemaGenerator
         var typeInterfaces = typeType.GetInterfaces();
         var targetTypeInterfaces = targetType.GetInterfaces();
 
+        if (sourceType is SszBitlist or SszBitvector)
+        {
+            if (value is not IEnumerable<bool> boolEnumerable)
+                throw new Exception("value not bool enumerable");
+
+            if (targetType == typeof(bool[]))
+                return boolEnumerable.ToArray();
+
+            if (targetType == typeof(List<bool>))
+                return boolEnumerable.ToList();
+        }
+
         if (sourceType is ISszCollection collection)
         {
             if (value is not IEnumerable valueEnumerable)

@@ -121,6 +121,11 @@ public class AssortedTests
     public void BeaconStateMainnetBlockHashProofTest() =>
         TestProof<BeaconState>("TestData/BeaconState.ssz", SizePreset.MainnetPreset, 24, 12);
     
+    
+    [Fact]
+    public void SignedBeaconBlockMinimalTest() =>
+        TestRoundtripContainer<SignedBeaconBlock>("TestData/SignedBeaconBlock.ssz", SizePreset.MinimalPreset);
+    
     [Fact]
     public void BeaconStateMinimalTest() =>
         TestRoundtripContainer<BeaconState>("TestData/genesis.ssz", SizePreset.MinimalPreset);
@@ -181,6 +186,12 @@ public class AssortedTests
         
         Assert.Equal(reserializedBytes, consumedBytes);
         Assert.Equal(reserializedBytes, deserializedBytes);
+
+        for (int i = 0; i < bytes.Length; i++)
+        {
+            Assert.Equal(bytes[i], buf[i]);
+        }
+        
         Assert.Equal(bytes, buf);
         Assert.True(RecursiveEqualityCheck(containerType, deserialized, deserializedAgain));
     }

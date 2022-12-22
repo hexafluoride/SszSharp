@@ -85,6 +85,21 @@ public class VoluntaryExit
     [SszElement(1, "uint64")] public ulong ValidatorIndex { get; set; }
 }
 
+public class SignedBeaconBlock
+{
+    [SszElement(0, "Container")] public BeaconBlock Block { get; set; }
+    [SszElement(1, "Vector[uint8, 96]")] public byte[] Signature { get; set; }
+}
+
+public class BeaconBlock
+{
+    [SszElement(0, "uint64")] public ulong Slot { get; set; }
+    [SszElement(1, "uint64")] public ulong ValidatorIndex { get; set; }
+    [SszElement(2, "Vector[uint8, 32]")] public byte[] ParentRoot { get; set; }
+    [SszElement(3, "Vector[uint8, 32]")] public byte[] StateRoot { get; set; }
+    [SszElement(4, "Container")] public BeaconBlockBody Body { get; set; }
+}
+
 public class SignedVoluntaryExit
 {
     [SszElement(0, "Container")] public VoluntaryExit Exit { get; set; }
@@ -93,7 +108,7 @@ public class SignedVoluntaryExit
 
 public class SyncAggregate
 {
-    [SszElement(0, "Bitvector[SYNC_COMMITTEE_SIZE]")] public bool[] SyncCommitteeBits { get; set; }
+    [SszElement(0, "Bitvector[SYNC_COMMITTEE_SIZE]")] public List<bool> SyncCommitteeBits { get; set; }
     [SszElement(1, "Vector[uint8, 96]")] public byte[] SyncCommitteeSignature { get; set; }
 }
 
