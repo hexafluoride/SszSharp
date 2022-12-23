@@ -120,6 +120,9 @@ public class AssortedTests
     [Fact]
     public void BeaconStateMainnetBlockHashProofTest() =>
         TestProof<BeaconState>("TestData/BeaconState.ssz", SizePreset.MainnetPreset, 24, 12);
+    [Fact]
+    public void SignedBeaconBlockMinimalStateRootProofTest() =>
+        TestProof<SignedBeaconBlock>("TestData/SignedBeaconBlock.ssz", SizePreset.MinimalPreset, 0, 4, 9, 2);
     
     
     [Fact]

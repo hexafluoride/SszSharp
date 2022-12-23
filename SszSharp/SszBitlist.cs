@@ -70,5 +70,5 @@ public class SszBitlist : ISszType<IEnumerable<bool>>
     }
 
     public int Length(IEnumerable<bool> t) => (t.Count() / 8) + 1;
-    public long ChunkCount(IEnumerable<bool> t) => (t.Count() + 255) / 256;
+    public long ChunkCount(IEnumerable<bool> t) => (Capacity + 255) / 256;
 }
