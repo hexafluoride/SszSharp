@@ -104,9 +104,254 @@ public static class Merkleizer
         return buf;
     }
 
-    public static byte[] Merkleize(IEnumerable<byte[]> chunks, long limit = -1)
+    public static IEnumerable<byte[]> GetChunks(ISszType type, object value, IEnumerable<long> chunkIndices)
     {
-        var chunksEnumerated = chunks.ToList();
+        bool isVector = type.IsVector();
+        bool isList = type.IsList();
+        bool isBasic = type.IsBasicType();
+        bool isContainer = type.IsContainer();
+        bool isUnion = type.IsUnion();
+        
+        var chunkIndicesEnumerated = chunkIndices.ToList();
+        var childChunks = new Dictionary<long, byte[]>();
+
+        if (isBasic)
+        {
+            return MerkleizeMany(Pack(type, new [] { value }), chunkIndicesEnumerated);
+        }
+        
+        if (type is SszBitvector)
+        {
+            var bitsArray = value.GetTypedEnumerable<bool>().ToArray();
+            return MerkleizeMany(PackBits(bitsArray), chunkIndicesEnumerated, limit: type.ChunkCountUntyped(bitsArray));
+        }
+        
+        if (type is SszBitlist)
+        {
+            var bitsArray = value.GetTypedEnumerable<bool>().ToArray();
+            var bitLength = bitsArray.Length;
+            
+            var lengthMappedIndices = chunkIndicesEnumerated
+                .Select(chunkIndex => chunkIndex == 1 ? 1 : chunkIndex - (LastPowerOfTwo(chunkIndex) / 2)).ToList();
+            
+            var ourChunks = MerkleizeMany(PackBits(bitsArray), chunkIndicesEnumerated, limit: type.ChunkCountUntyped(bitsArray)).ToList();
+            for (int i = 0; i < lengthMappedIndices.Count; i++)
+            {
+                childChunks[lengthMappedIndices[i]] = ourChunks[i];
+            }
+
+            childChunks[3] = PadBigInteger(bitLength);
+            childChunks[2] = new byte[32];
+            childChunks[1].CopyTo(childChunks[2], 0);
+            childChunks[1] = new byte[32];
+            Hash(childChunks[1], childChunks[2], childChunks[3]);
+            return chunkIndicesEnumerated.Select(chunkIndex => childChunks[chunkIndex]).ToList();
+        }
+        
+        var leafCount = Merkleizer.NextPowerOfTwo(type.ChunkCountUntyped(default!));
+        var ourIndices = chunkIndicesEnumerated.Where(chunkIndex => chunkIndex < leafCount * 2).ToList();
+        var childIndices = chunkIndicesEnumerated.Where(chunkIndex => chunkIndex >= leafCount * 2).ToList();
+
+        if (isVector)
+        {
+            var elementType = (type as ISszCollection)!.MemberTypeUntyped;
+
+            if (elementType.IsBasicType())
+            {
+                return MerkleizeMany(Pack(elementType, value.GetGenericEnumerable()), chunkIndicesEnumerated);
+            }
+            else
+            {
+                var childValues = value.GetGenericEnumerable().ToList();
+                var localChunks = new List<byte[]>();
+
+                for (int i = 0; i < childValues.Count; i++)
+                {
+                    var originalIndices = new List<long>() { 1 };
+                    var indicesUnderElement = new List<long>() { 1 };
+                    for (int j = 0; j < childIndices.Count; j++)
+                    {
+                        var childIndex = childIndices[j];
+                        var parentAtLevel = childIndex;
+                        while (parentAtLevel >= leafCount * 2)
+                        {
+                            parentAtLevel = GeneralizedIndexParent(parentAtLevel);
+                        }
+
+                        var indexAtLevel = parentAtLevel - (leafCount + 1);
+                        if (indexAtLevel == i)
+                        {
+                            childIndices.RemoveAt(j);
+
+                            originalIndices.Add(childIndex);
+                            childIndex -= (long) ((parentAtLevel - 1) * (leafCount <= 2 ? 0.5d : 1) *
+                                                  LastPowerOfTwo(childIndex / (parentAtLevel - 1d)));
+                            indicesUnderElement.Add(childIndex);
+                        }
+                    }
+
+                    var childMerkles = GetChunks(elementType, childValues[i], indicesUnderElement).ToList();
+                    localChunks.Add(childMerkles[0]);
+                    for (int j = 1; j < indicesUnderElement.Count; j++)
+                    {
+                        childChunks[originalIndices[j]] = childMerkles[j];
+                    }
+                }
+
+                var ourChunks = MerkleizeMany(localChunks, ourIndices).ToList();
+                for (int i = 0; i < ourChunks.Count; i++)
+                {
+                    childChunks[ourIndices[i]] = ourChunks[i];
+                }
+
+                return chunkIndicesEnumerated.Select(i => childChunks[i]).ToList();
+            }
+        }
+        
+        if (isList)
+        {
+            var elementType = (type as ISszCollection)!.MemberTypeUntyped;
+            var lengthMappedIndices = chunkIndicesEnumerated
+                .Select(chunkIndex => chunkIndex == 1 ? 1 : chunkIndex - (LastPowerOfTwo(chunkIndex) / 2)).ToList();
+            var childValues = value.GetGenericEnumerable().ToList();
+
+            var submerkles = new List<byte[]>();
+
+            var ourIndicesUnmapped = new List<long>();
+            var ourIndicesMapped = new List<long>();
+
+            for (int i = 0; i < lengthMappedIndices.Count; i++)
+            {
+                var index = lengthMappedIndices[i];
+                if (index < leafCount * 2)
+                {
+                    ourIndicesUnmapped.Add(chunkIndicesEnumerated[i]);
+                    ourIndicesMapped.Add(index);
+                }
+            }
+            
+            if (elementType.IsBasicType())
+            {
+                submerkles = MerkleizeMany(Pack(elementType, childValues), ourIndicesMapped,
+                    limit: type.ChunkCountUntyped(default!)).ToList();
+            }
+            else
+            {
+                var localChunks = new List<byte[]>();
+
+                for (int i = 0; i < childValues.Count; i++)
+                {
+                    var originalIndices = new List<long>() { 1 };
+                    var indicesUnderElement = new List<long>() { 1 };
+                    for (int j = 0; j < lengthMappedIndices.Count; j++)
+                    {
+                        var childIndex = lengthMappedIndices[j];
+                        if (childIndex < leafCount * 2)
+                            continue;
+                        
+                        var parentAtLevel = childIndex;
+                        while (parentAtLevel >= leafCount * 2)
+                        {
+                            parentAtLevel = GeneralizedIndexParent(parentAtLevel);
+                        }
+
+                        var indexAtLevel = parentAtLevel - (leafCount);
+                        if (indexAtLevel == i)
+                        {
+                            originalIndices.Add(chunkIndicesEnumerated[j]);
+                            childIndex -= (long)((parentAtLevel - 1) * (leafCount <= 2 ? 0.5d : 1) * LastPowerOfTwo(childIndex / (parentAtLevel - 1d)));
+                            indicesUnderElement.Add(childIndex);
+                        }
+                    }
+                    
+                    var childMerkles = GetChunks(elementType, childValues[i], indicesUnderElement).ToList();
+                    localChunks.Add(childMerkles[0]);
+                    
+                    for (int j = 1; j < indicesUnderElement.Count; j++)
+                    {
+                        childChunks[originalIndices[j]] = childMerkles[j];
+                    }
+                }
+                
+                submerkles = MerkleizeMany(localChunks, ourIndicesMapped, limit: type.ChunkCountUntyped(default!)).ToList();
+            }
+            
+            for (int i = 0; i < ourIndicesMapped.Count; i++)
+            {
+                childChunks[ourIndicesUnmapped[i]] = submerkles[i];
+            }
+
+            childChunks[3] = PadBigInteger(childValues.Count);
+            childChunks[2] = new byte[32];
+            childChunks[1].CopyTo(childChunks[2], 0);
+            childChunks[1] = new byte[32];
+            Hash(childChunks[1], childChunks[2], childChunks[3]);
+            return chunkIndicesEnumerated.Select(chunkIndex => childChunks[chunkIndex]).ToList();
+        }
+        
+        if (isContainer)
+        {
+            var schema = type.GetSchema();
+            var localChunks = new List<byte[]>();
+
+            for (int i = 0; i < schema.FieldsUntyped.Length; i++)
+            {
+                var field = schema.FieldsUntyped[i];
+                var fieldType = field.FieldType;
+                var originalIndices = new List<long>() { 1 };
+                var indicesUnderElement = new List<long>() { 1 };
+                for (int j = 0; j < childIndices.Count; j++)
+                {
+                    var childIndex = childIndices[j];
+                    var parentAtLevel = childIndex;
+
+                    while (parentAtLevel >= leafCount * 2)
+                    {
+                        parentAtLevel = GeneralizedIndexParent(parentAtLevel);
+                    }
+
+                    var indexAtLevel = parentAtLevel - leafCount;
+                    if (indexAtLevel == i)
+                    {
+                        originalIndices.Add(childIndex);
+                        childIndex -= (long)((parentAtLevel - 1) * (leafCount <= 2 ? 0.5d : 1) * LastPowerOfTwo(childIndex / (parentAtLevel - 1d)));
+                        indicesUnderElement.Add(childIndex);
+                    }
+                }
+
+                var childMerkles = GetChunks(fieldType, field.GetUntyped(value), indicesUnderElement).ToList();
+                localChunks.Add(childMerkles[0]);
+                for (int j = 1; j < indicesUnderElement.Count; j++)
+                {
+                    childChunks[originalIndices[j]] = childMerkles[j];
+                }
+            }
+
+            var ourChunks = MerkleizeMany(localChunks, ourIndices).ToList();
+            for (int i = 0; i < ourChunks.Count; i++)
+            {
+                childChunks[ourIndices[i]] = ourChunks[i];
+            }
+
+            return chunkIndicesEnumerated.Select(i => childChunks[i]).ToList();
+        }
+        
+        // TODO: Implement unions
+
+        throw new Exception("Unrecognized type");
+    }
+
+    public static byte[] Merkleize(IEnumerable<byte[]> chunks, long limit = -1, int chunkIndex = 1, string? print = null)
+    {
+        return MerkleizeMany(chunks, new long[] {chunkIndex}, limit, print).Single();
+    }
+    
+    public static IEnumerable<byte[]> MerkleizeMany(IEnumerable<byte[]> chunks, IEnumerable<long> chunkIndices, long limit = -1, string? print = null)
+    {
+        var chunksEnumerated = chunks.Select(c => c.ToList().ToArray()).ToList();
+        var chunkIndicesEnumerated = chunkIndices.ToHashSet();
+        var chunkStorage = new Dictionary<long, byte[]>();
+        
         if (limit != -1 && chunksEnumerated.Count > limit)
             throw new Exception("Chunk count exceeds limit");
 
@@ -116,7 +361,21 @@ public static class Merkleizer
         
         if (chunksEnumerated.Count == 0)
         {
-            return ZeroHash(layerCount);
+            return Enumerable.Repeat(ZeroHash(layerCount), chunkIndicesEnumerated.Count);
+        }
+
+        foreach (var chunkIndex in chunkIndicesEnumerated)
+        {
+            if (chunkIndex >= padTarget)
+            {
+                var localIndex = (int) (chunkIndex - padTarget);
+                if (localIndex < chunksEnumerated.Count)
+                    chunkStorage[chunkIndex - 1] = chunksEnumerated[localIndex].ToArray();
+                else
+                {
+                    chunkStorage[chunkIndex - 1] = ZeroHash(0);
+                }
+            }
         }
 
         for (int l = 0; l < layerCount; l++)
@@ -132,13 +391,40 @@ public static class Merkleizer
             for (int i = 0; i < paddedChunkCount; i += 2)
             {
                 var span = new Span<byte>(chunksEnumerated[i / 2]);
+                var index = (long)Math.Pow(2, layerCount - (l + 1)) + (i / 2);
+                // var child = GeneralizedIndexChild(index, false);
+                //
+                // if (print is not null)
+                // {
+                //     Console.Write($"{print} | {index} = Hash({child} + {child + 1}) = Hash({chunksEnumerated[i].PrintTruncated()} + {chunksEnumerated[i + 1].PrintTruncated()}) = ");
+                // }
+
                 Hash(span, chunksEnumerated[i], chunksEnumerated[i + 1]);
+
+                // if (print is not null)
+                // {
+                //     Console.WriteLine(chunksEnumerated[i / 2].PrintTruncated());
+                // }
+                if (chunkIndicesEnumerated.Contains(index))
+                {
+                    chunkStorage[index - 1] = new byte[32];
+                    span.CopyTo(chunkStorage[index - 1]);
+                }
             }
 
             chunkCount = paddedChunkCount / 2;
         }
-        
-        return chunksEnumerated[0];
+
+        byte[] GetChunk(int index)
+        {
+            if (chunkStorage.ContainsKey(index))
+                return chunkStorage[index];
+            
+            var depth = layerCount - ((int)Math.Log2(index));
+            return ZeroHash(depth);
+        }
+
+        return chunkIndicesEnumerated.Select(i => GetChunk((int)i - 1)).ToList();
     }
 
     public static byte[] HashTreeRoot(ISszType type, object value)
@@ -224,10 +510,12 @@ public static class Merkleizer
         return ZeroHashes[depth];
     }
 
-    public static long NextPowerOfTwo(int i) => (long)Math.Pow(2, Math.Ceiling(Math.Log2(i)));
-    public static long NextPowerOfTwo(long l) => (long)Math.Pow(2, Math.Ceiling(Math.Log2(l)));
-    public static long LastPowerOfTwo(int i) => (long)Math.Pow(2, Math.Floor(Math.Log2(i)));
-    public static long LastPowerOfTwo(long l) => (long)Math.Pow(2, Math.Floor(Math.Log2(l)));
+    public static long NextPowerOfTwo(int i) => i == 0 ? 1 : (long)Math.Pow(2, Math.Ceiling(Math.Log2(i)));
+    public static long NextPowerOfTwo(long l) => l == 0 ? 1 : (long)Math.Pow(2, Math.Ceiling(Math.Log2(l)));
+    public static long LastPowerOfTwo(int i) => i == 1 ? 0 : (long)Math.Pow(2, Math.Floor(Math.Log2(i - 1)));
+    public static long LastPowerOfTwo(long l) => l == 1 ? 0 : (long)Math.Pow(2, Math.Floor(Math.Log2(l - 1)));
+
+    public static long LastPowerOfTwo(double d) => d == 1 ? 0 : (long) (Math.Pow(2, Math.Floor(Math.Log2(d))));
     public static int MerkleItemLength(this ISszType type) => type.IsBasicType() ? type.LengthUntyped(default!) : 32;
 
     public static (int, int, int) GetItemPosition(ISszType type, int index)
@@ -258,7 +546,7 @@ public static class Merkleizer
         
         throw new Exception("Only lists, vectors, and containers are supported.");
     }
-    
+
     public static long GetGeneralizedIndex(ISszType type, IEnumerable<int> path)
     {
         var pathEnumerated = path.ToList();
@@ -339,7 +627,9 @@ public static class Merkleizer
         return o;
     }
 
-    public static IEnumerable<long> GetHelperIndices(IEnumerable<long> indices)
+    public static IEnumerable<long> GetHelperIndices(params int[] indices) =>
+        GetHelperIndices(indices.Select(i => (long) i).ToArray());
+    public static IEnumerable<long> GetHelperIndices(params long[] indices)
     {
         var indicesEnumerated = indices.ToList();
         var helperIndices = indicesEnumerated.SelectMany(GetBranchIndices).ToHashSet();
@@ -347,27 +637,42 @@ public static class Merkleizer
         helperIndices.ExceptWith(pathIndices);
         return helperIndices.OrderByDescending(i => i).ToList();
     }
+
+    static string PrintTruncated(this byte[] arr)
+    {
+        return
+            $"{BitConverter.ToString(arr, 0, 2).Replace("-", "").ToLowerInvariant()}:{BitConverter.ToString(arr, arr.Length - 2).Replace("-", "").ToLowerInvariant()}";
+    }
     
     public static byte[] CalculateMerkleRoot(byte[] leaf, byte[][] proof, long index)
     {
         if (proof.Length != GetGeneralizedIndexLength(index))
             throw new Exception("Assertion failed");
 
-        var leafSpan = new Span<byte>(leaf);
+        var leafCopy = leaf.ToArray();
+        var leafSpan = new Span<byte>(leafCopy);
+        var proofIndex = index;
         for (int i = 0; i < proof.Length; i++)
         {
             byte[] h = proof[i];
+            proofIndex = GeneralizedIndexSibling(proofIndex);
             if (GetGeneralizedIndexBit(index, i))
             {
-                Hash(leafSpan, h, leaf);
+                // Console.Write($"{GeneralizedIndexParent(proofIndex)} = Hash({proofIndex}! + {GeneralizedIndexSibling(proofIndex)}) = Hash({h.PrintTruncated()} + {leafCopy.PrintTruncated()}) = ");
+                Hash(leafSpan, h, leafCopy);
+                // Console.WriteLine(leafCopy.PrintTruncated());
             }
             else
             {
-                Hash(leafSpan, leaf, h);
+                // Console.Write($"{GeneralizedIndexParent(proofIndex)} = Hash({GeneralizedIndexSibling(proofIndex)} + {proofIndex}!) = Hash({leafCopy.PrintTruncated()} + {h.PrintTruncated()}) = ");
+                Hash(leafSpan, leafCopy, h);
+                // Console.WriteLine(leafCopy.PrintTruncated());
             }
+
+            proofIndex = GeneralizedIndexParent(proofIndex);
         }
 
-        return leaf;
+        return leafCopy;
     }
 
     public static int Hash(Span<byte> output, byte[] left, byte[] right)

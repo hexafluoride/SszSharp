@@ -53,6 +53,10 @@
       <Content Include="TestData\ExecutionPayload.ssz">
         <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       </Content>
+      <None Remove="TestData\SignedBeaconBlock.ssz" />
+      <Content Include="TestData\SignedBeaconBlock.ssz">
+        <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      </Content>
     </ItemGroup>
 
 </Project>

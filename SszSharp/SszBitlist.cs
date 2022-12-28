@@ -33,16 +33,16 @@ public class SszBitlist : ISszType<IEnumerable<bool>>
                 ret.Add(bit);
 
                 if (bit)
-                    lastTrueBit = (i * 8) + j;
+                    lastTrueBit = ret.Count - 1;
             }
         }
 
-        if (lastTrueBit - 1 > Capacity)
+        if (lastTrueBit > Capacity)
         {
-            throw new Exception($"Read {lastTrueBit - 1} bits for Bitlist[{Capacity}]");
+            throw new Exception($"Read {lastTrueBit} bits for Bitlist[{Capacity}]");
         }
 
-        return (ret.Take(lastTrueBit - 1), span.Length);
+        return (ret.Take(lastTrueBit), span.Length);
     }
 
     public int Serialize(IEnumerable<bool> t, Span<byte> span)
@@ -59,7 +59,6 @@ public class SszBitlist : ISszType<IEnumerable<bool>>
         }
         
         // Advance once for last bit
-        index++;
         span[index / 8] |= (byte)(1 << (index % 8));
 
         for (int i = (index / 8) + 1; i < totalLength; i++)
@@ -71,5 +70,5 @@ public class SszBitlist : ISszType<IEnumerable<bool>>
     }
 
     public int Length(IEnumerable<bool> t) => (t.Count() / 8) + 1;
-    public long ChunkCount(IEnumerable<bool> t) => (t.Count() + 255) / 256;
+    public long ChunkCount(IEnumerable<bool> t) => (Capacity + 255) / 256;
 }

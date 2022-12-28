@@ -22,7 +22,7 @@ public class SszBitvector : ISszType<IEnumerable<bool>>
     public (IEnumerable<bool>, int) Deserialize(ReadOnlySpan<byte> span)
     {
         var ret = new bool[Count];
-        long bytes = (Count / 8) + 1;
+        long bytes = (Count + 7) / 8;
         if (span.Length < bytes)
         {
             throw new Exception($"Expected {bytes} bytes for Bitvector[{Count}], got {span.Length} bytes");
@@ -34,7 +34,6 @@ public class SszBitvector : ISszType<IEnumerable<bool>>
             for (int j = 0; j < 8; j++)
             {
                 var bitIndex = (i * 8) + j;
-
                 if (bitIndex >= Count)
                 {
                     continue;
@@ -66,9 +65,9 @@ public class SszBitvector : ISszType<IEnumerable<bool>>
             index++;
         }
 
-        return (index / 8) + 1;
+        return (index + 7) / 8;
     }
 
-    public int Length(IEnumerable<bool> t) => (int)((Count / 8) + 1);
+    public int Length(IEnumerable<bool> t) => (int)((Count + 7) / 8);
     public long ChunkCount(IEnumerable<bool> t) => (Count + 255) / 256;
 }
