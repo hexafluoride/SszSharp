@@ -131,8 +131,7 @@ public static class Merkleizer
             var bitsArray = value.GetTypedEnumerable<bool>().ToArray();
             var bitLength = bitsArray.Length;
             
-            var lengthMappedIndices = chunkIndicesEnumerated
-                .Select(chunkIndex => chunkIndex == 1 ? 1 : chunkIndex - (LastPowerOfTwo(chunkIndex) / 2)).ToList();
+            var lengthMappedIndices = chunkIndicesEnumerated.Select(LengthMapIndex).ToList();
             
             var ourChunks = MerkleizeMany(PackBits(bitsArray), chunkIndicesEnumerated, limit: type.ChunkCountUntyped(bitsArray)).ToList();
             for (int i = 0; i < lengthMappedIndices.Count; i++)
@@ -202,8 +201,7 @@ public static class Merkleizer
         if (isList)
         {
             var elementType = (type as ISszCollection)!.MemberTypeUntyped;
-            var lengthMappedIndices = chunkIndicesEnumerated
-                .Select(chunkIndex => chunkIndex == 1 ? 1 : chunkIndex - (LastPowerOfTwo(chunkIndex) / 2)).ToList();
+            var lengthMappedIndices = chunkIndicesEnumerated.Select(LengthMapIndex).ToList();
             var childValues = value.GetGenericEnumerable().ToList();
 
             var submerkles = new List<byte[]>();
@@ -571,6 +569,15 @@ public static class Merkleizer
     public static bool GetGeneralizedIndexBit(long index, int position) => (index & (1 << position)) > 0;
     public static int GetGeneralizedIndexLength(long index) => (int)Math.Log2(index);
 
+    public static long LengthMapIndex(long index)
+    {
+        var leadingZeroes = BitOperations.LeadingZeroCount((ulong) index);
+        var rest = 64 - leadingZeroes;
+        index &= (1L << (rest - 1)) - 1;
+        index |= 1L << (rest - 1);
+        return index;
+    }
+    
     public static long GetChildIndexAtLevel(long childIndex, long leafCount)
     {
         var leadingZeroes = BitOperations.LeadingZeroCount((ulong) childIndex);
