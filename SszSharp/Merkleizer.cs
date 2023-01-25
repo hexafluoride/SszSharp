@@ -133,7 +133,7 @@ public static class Merkleizer
             
             var lengthMappedIndices = chunkIndicesEnumerated.Select(LengthMapIndex).ToList();
             
-            var ourChunks = MerkleizeMany(PackBits(bitsArray), chunkIndicesEnumerated, limit: type.ChunkCountUntyped(bitsArray)).ToList();
+            var ourChunks = MerkleizeMany(PackBits(bitsArray), lengthMappedIndices, limit: type.ChunkCountUntyped(bitsArray)).ToList();
             for (int i = 0; i < lengthMappedIndices.Count; i++)
             {
                 childChunks[lengthMappedIndices[i]] = ourChunks[i];
@@ -571,6 +571,11 @@ public static class Merkleizer
 
     public static long LengthMapIndex(long index)
     {
+        if (index == 1)
+        {
+            return 1;
+        }
+        
         var leadingZeroes = BitOperations.LeadingZeroCount((ulong) index);
         var rest = (64 - leadingZeroes) - 1;
         index &= (1L << (rest - 2)) - 1;
