@@ -572,8 +572,8 @@ public static class Merkleizer
     public static long LengthMapIndex(long index)
     {
         var leadingZeroes = BitOperations.LeadingZeroCount((ulong) index);
-        var rest = 64 - leadingZeroes;
-        index &= (1L << (rest - 1)) - 1;
+        var rest = (64 - leadingZeroes) - 1;
+        index &= (1L << (rest - 2)) - 1;
         index |= 1L << (rest - 1);
         return index;
     }
