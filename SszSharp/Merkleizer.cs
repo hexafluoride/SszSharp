@@ -172,21 +172,12 @@ public static class Merkleizer
                     for (int j = 0; j < childIndices.Count; j++)
                     {
                         var childIndex = childIndices[j];
-                        var parentAtLevel = childIndex;
-                        while (parentAtLevel >= leafCount * 2)
-                        {
-                            parentAtLevel = GeneralizedIndexParent(parentAtLevel);
-                        }
-
-                        var indexAtLevel = parentAtLevel - (leafCount + 1);
+                        var indexAtLevel = GetIndexAtLevel(childIndex, leafCount);
                         if (indexAtLevel == i)
                         {
                             childIndices.RemoveAt(j);
-
                             originalIndices.Add(childIndex);
-                            childIndex -= (long) ((parentAtLevel - 1) * (leafCount <= 2 ? 0.5d : 1) *
-                                                  LastPowerOfTwo(childIndex / (parentAtLevel - 1d)));
-                            indicesUnderElement.Add(childIndex);
+                            indicesUnderElement.Add(GetChildIndexAtLevel(childIndex, leafCount));
                         }
                     }
 
@@ -248,18 +239,11 @@ public static class Merkleizer
                         var childIndex = lengthMappedIndices[j];
                         if (childIndex < leafCount * 2)
                             continue;
-                        
-                        var parentAtLevel = childIndex;
-                        while (parentAtLevel >= leafCount * 2)
-                        {
-                            parentAtLevel = GeneralizedIndexParent(parentAtLevel);
-                        }
-
-                        var indexAtLevel = parentAtLevel - (leafCount);
+                        var indexAtLevel = GetIndexAtLevel(childIndex, leafCount);
                         if (indexAtLevel == i)
                         {
                             originalIndices.Add(chunkIndicesEnumerated[j]);
-                            childIndex -= (long)((parentAtLevel - 1) * (leafCount <= 2 ? 0.5d : 1) * LastPowerOfTwo(childIndex / (parentAtLevel - 1d)));
+                            childIndex = GetChildIndexAtLevel(childIndex, leafCount);
                             indicesUnderElement.Add(childIndex);
                         }
                     }
@@ -303,18 +287,11 @@ public static class Merkleizer
                 for (int j = 0; j < childIndices.Count; j++)
                 {
                     var childIndex = childIndices[j];
-                    var parentAtLevel = childIndex;
-
-                    while (parentAtLevel >= leafCount * 2)
-                    {
-                        parentAtLevel = GeneralizedIndexParent(parentAtLevel);
-                    }
-
-                    var indexAtLevel = parentAtLevel - leafCount;
+                    var indexAtLevel = GetIndexAtLevel(childIndex, leafCount);
                     if (indexAtLevel == i)
                     {
                         originalIndices.Add(childIndex);
-                        childIndex -= (long)((parentAtLevel - 1) * (leafCount <= 2 ? 0.5d : 1) * LastPowerOfTwo(childIndex / (parentAtLevel - 1d)));
+                        childIndex = GetChildIndexAtLevel(childIndex, leafCount);
                         indicesUnderElement.Add(childIndex);
                     }
                 }
@@ -594,6 +571,29 @@ public static class Merkleizer
     public static bool GetGeneralizedIndexBit(long index, int position) => (index & (1 << position)) > 0;
     public static int GetGeneralizedIndexLength(long index) => (int)Math.Log2(index);
 
+    public static long GetChildIndexAtLevel(long childIndex, long leafCount)
+    {
+        var leadingZeroes = BitOperations.LeadingZeroCount((ulong) childIndex);
+        var leafCountPower = BitOperations.Log2((ulong) leafCount) + 1;
+        var rest = (64 - leadingZeroes) - leafCountPower;
+
+        childIndex &= (1L << rest) - 1;
+        childIndex |= 1L << rest;
+        return childIndex;
+    }
+    
+    public static long GetIndexAtLevel(long childIndex, long leafCount)
+    {
+        var leadingZeroes = BitOperations.LeadingZeroCount((ulong) childIndex);
+        var leafCountPower = BitOperations.Log2((ulong) leafCount) + 1;
+        var reversePosition = 64 - leadingZeroes;
+        var reversePositionPadded = reversePosition - leafCountPower;
+        var mask = (1L << leafCountPower) - 1;
+
+        var masked = childIndex & (mask << reversePositionPadded);
+        return (masked >> reversePositionPadded) - leafCount;
+    }
+    
     public static long ConcatGeneralizedIndices(IEnumerable<long> indices)
     {
         var o = 1L;
