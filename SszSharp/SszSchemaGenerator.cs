@@ -172,11 +172,15 @@ public static class SszSchemaGenerator
         
         return value;
     }
-
-    public static Dictionary<(Type, SizePreset?), ISszContainerSchema> CachedSchemas = new();
+    
+    [ThreadStatic]
+    public static Dictionary<(Type, SizePreset?), ISszContainerSchema>? CachedSchemas;
 
     public static SszContainerSchema<T> GetSchema<T>(SizePreset? preset, Func<T>? factory = null)
     {
+        if (CachedSchemas is null)
+            CachedSchemas = new();
+        
         preset ??= SizePreset.DefaultPreset;
         var cacheKey = (typeof(T), preset);
         if (CachedSchemas.ContainsKey(cacheKey))
@@ -191,6 +195,9 @@ public static class SszSchemaGenerator
     
     public static ISszContainerSchema GetSchema(Type t, SizePreset? preset, Func<object>? factory = null)
     {
+        if (CachedSchemas is null)
+            CachedSchemas = new();
+
         preset ??= SizePreset.DefaultPreset;
         var cacheKey = (t, preset);
         if (CachedSchemas.ContainsKey(cacheKey))

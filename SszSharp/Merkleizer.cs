@@ -324,7 +324,8 @@ public static class Merkleizer
     public static IEnumerable<byte[]> MerkleizeMany(IEnumerable<byte[]> chunks, IEnumerable<long> chunkIndices, long limit = -1, string? print = null)
     {
         var chunksEnumerated = chunks.Select(c => c.ToList().ToArray()).ToList();
-        var chunkIndicesEnumerated = chunkIndices.ToHashSet();
+        var chunkIndicesEnumerated = chunkIndices.ToList();
+        var chunkIndicesHashset = chunkIndicesEnumerated.ToHashSet();
         var chunkStorage = new Dictionary<long, byte[]>();
         
         if (limit != -1 && chunksEnumerated.Count > limit)
@@ -339,7 +340,7 @@ public static class Merkleizer
             return Enumerable.Repeat(ZeroHash(layerCount), chunkIndicesEnumerated.Count);
         }
 
-        foreach (var chunkIndex in chunkIndicesEnumerated)
+        foreach (var chunkIndex in chunkIndicesHashset)
         {
             if (chunkIndex >= padTarget)
             {
@@ -380,7 +381,7 @@ public static class Merkleizer
                 // {
                 //     Console.WriteLine(chunksEnumerated[i / 2].PrintTruncated());
                 // }
-                if (chunkIndicesEnumerated.Contains(index))
+                if (chunkIndicesHashset.Contains(index))
                 {
                     chunkStorage[index - 1] = new byte[32];
                     span.CopyTo(chunkStorage[index - 1]);
@@ -578,7 +579,7 @@ public static class Merkleizer
         
         var leadingZeroes = BitOperations.LeadingZeroCount((ulong) index);
         var rest = (64 - leadingZeroes) - 1;
-        index &= (1L << (rest - 2)) - 1;
+        index &= (1L << (rest - 1)) - 1;
         index |= 1L << (rest - 1);
         return index;
     }
