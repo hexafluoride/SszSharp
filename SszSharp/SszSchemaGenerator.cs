@@ -18,6 +18,9 @@ public static class SszSchemaGenerator
                     case 8:
                         value = Convert.ToByte(value);
                         break;
+                    case 32:
+                        value = Convert.ToUInt32(value);
+                        break;
                     default:
                         throw new Exception("Non-uint8 enums are not supported");
                 }
